@@ -1,0 +1,238 @@
+import React, { useState, useCallback } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
+  TouchableOpacity,
+  SafeAreaView,
+  ActivityIndicator,
+  RefreshControl,
+} from 'react-native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { getWorkoutHistory, WorkoutHistory } from '../api/workouts';
+import { MOCK_USER_ID } from '../utils/constants';
+
+type RootNavigation = {
+  navigate: (screen: string, params?: any) => void;
+};
+
+export default function HistoryScreen() {
+  const navigation = useNavigation<RootNavigation>();
+  const [workouts, setWorkouts] = useState<WorkoutHistory[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadHistory();
+    }, [])
+  );
+
+  const loadHistory = async () => {
+    try {
+      setError(null);
+      const data = await getWorkoutHistory(MOCK_USER_ID);
+      setWorkouts(data);
+    } catch (err) {
+      console.error('Error loading history:', err);
+      setError('Failed to load history');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    loadHistory();
+  };
+
+  const handleViewWorkout = (dayId: number) => {
+    navigation.navigate('Templates', {
+      screen: 'WorkoutDay',
+      params: { dayId },
+    });
+  };
+
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffTime = now.getTime() - date.getTime();
+    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+
+    if (diffDays === 0) return 'Today';
+    if (diffDays === 1) return 'Yesterday';
+    if (diffDays < 7) return `${diffDays} days ago`;
+
+    return date.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined,
+    });
+  };
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <ActivityIndicator size="large" style={styles.loader} />
+      </SafeAreaView>
+    );
+  }
+
+  if (error) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>{error}</Text>
+          <TouchableOpacity style={styles.retryButton} onPress={loadHistory}>
+            <Text style={styles.retryButtonText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (workouts.length === 0) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.emptyState}>
+          <Text style={styles.emptyText}>No completed workouts yet</Text>
+          <Text style={styles.emptySubtext}>
+            Complete your first workout to see it here
+          </Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  return (
+    <SafeAreaView style={styles.container}>
+      <FlatList
+        data={workouts}
+        keyExtractor={(item) => item.id.toString()}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+        renderItem={({ item }) => (
+          <TouchableOpacity
+            style={styles.card}
+            onPress={() => handleViewWorkout(item.id)}
+          >
+            <View style={styles.cardHeader}>
+              <Text style={styles.dayName}>{item.dayName}</Text>
+              <View style={styles.dateRow}>
+                <Text style={styles.date}>{formatDate(item.completedAt)}</Text>
+                <Text style={styles.arrow}>›</Text>
+              </View>
+            </View>
+            <View style={styles.cardStats}>
+              <Text style={styles.stat}>
+                {item.exerciseCount} exercises
+              </Text>
+              <Text style={styles.separator}>•</Text>
+              <Text style={styles.stat}>
+                {item.totalSets} sets completed
+              </Text>
+            </View>
+          </TouchableOpacity>
+        )}
+        contentContainerStyle={styles.list}
+      />
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#fff',
+  },
+  loader: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  errorText: {
+    fontSize: 16,
+    color: '#666',
+    marginBottom: 16,
+  },
+  retryButton: {
+    backgroundColor: '#2196f3',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+  },
+  retryButtonText: {
+    color: '#fff',
+    fontWeight: 'bold',
+  },
+  list: {
+    padding: 20,
+  },
+  card: {
+    padding: 16,
+    marginBottom: 12,
+    backgroundColor: '#f5f5f5',
+    borderRadius: 8,
+    borderLeftWidth: 4,
+    borderLeftColor: '#4caf50',
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  dayName: {
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  date: {
+    fontSize: 14,
+    color: '#666',
+  },
+  dateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  arrow: {
+    fontSize: 20,
+    color: '#666',
+    marginLeft: 8,
+  },
+  cardStats: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  stat: {
+    fontSize: 14,
+    color: '#666',
+  },
+  separator: {
+    marginHorizontal: 8,
+    color: '#666',
+  },
+  emptyState: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  emptyText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 8,
+  },
+  emptySubtext: {
+    fontSize: 14,
+    color: '#666',
+  },
+});
