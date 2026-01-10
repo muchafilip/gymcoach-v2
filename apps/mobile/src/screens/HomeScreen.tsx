@@ -11,11 +11,12 @@ import {
 } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { getHomeData } from '../api/workouts';
+import { useThemeStore } from '../store/themeStore';
 import { HomeData } from '../types';
-import { MOCK_USER_ID } from '../utils/constants';
 
 export default function HomeScreen() {
   const navigation = useNavigation<any>();
+  const { colors } = useThemeStore();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [data, setData] = useState<HomeData | null>(null);
@@ -30,7 +31,7 @@ export default function HomeScreen() {
   const loadData = async () => {
     try {
       setError(null);
-      const homeData = await getHomeData(MOCK_USER_ID);
+      const homeData = await getHomeData();
       setData(homeData);
     } catch (err) {
       console.error('Error loading home data:', err);
@@ -82,19 +83,19 @@ export default function HomeScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.container}>
-        <ActivityIndicator size="large" style={styles.loader} />
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+        <ActivityIndicator size="large" color={colors.primary} style={styles.loader} />
       </SafeAreaView>
     );
   }
 
   if (error) {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
         <View style={styles.errorContainer}>
-          <Text style={styles.errorText}>{error}</Text>
-          <TouchableOpacity style={styles.retryButton} onPress={loadData}>
-            <Text style={styles.retryButtonText}>Retry</Text>
+          <Text style={[styles.errorText, { color: colors.textSecondary }]}>{error}</Text>
+          <TouchableOpacity style={[styles.retryButton, { backgroundColor: colors.primary }]} onPress={loadData}>
+            <Text style={[styles.retryButtonText, { color: colors.buttonText }]}>Retry</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -102,58 +103,58 @@ export default function HomeScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <ScrollView
         style={styles.scrollView}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
         }
       >
         <View style={styles.header}>
-          <Text style={styles.greeting}>Welcome back!</Text>
+          <Text style={[styles.greeting, { color: colors.text }]}>Welcome back!</Text>
         </View>
 
         {/* Stats Cards */}
         <View style={styles.statsGrid}>
-          <View style={styles.statCard}>
-            <Text style={styles.statValue}>
+          <View style={[styles.statCard, { backgroundColor: colors.surface }]}>
+            <Text style={[styles.statValue, { color: colors.primary }]}>
               {formatWeight(data?.totalWeightLifted || 0)}
             </Text>
-            <Text style={styles.statLabel}>Total Lifted</Text>
+            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Total Lifted</Text>
           </View>
-          <View style={styles.statCard}>
-            <Text style={styles.statValue}>{data?.workoutsCompleted || 0}</Text>
-            <Text style={styles.statLabel}>Workouts</Text>
+          <View style={[styles.statCard, { backgroundColor: colors.surface }]}>
+            <Text style={[styles.statValue, { color: colors.primary }]}>{data?.workoutsCompleted || 0}</Text>
+            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Workouts</Text>
           </View>
         </View>
 
         {/* Next Workout */}
         {data?.nextWorkout ? (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Next Workout</Text>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Next Workout</Text>
             <TouchableOpacity
-              style={styles.nextWorkoutCard}
+              style={[styles.nextWorkoutCard, { backgroundColor: colors.successLight, borderColor: colors.success }]}
               onPress={handleStartWorkout}
             >
               <View style={styles.nextWorkoutInfo}>
-                <Text style={styles.nextWorkoutName}>{data.nextWorkout.dayName}</Text>
-                <Text style={styles.nextWorkoutPlan}>
+                <Text style={[styles.nextWorkoutName, { color: colors.text }]}>{data.nextWorkout.dayName}</Text>
+                <Text style={[styles.nextWorkoutPlan, { color: colors.textSecondary }]}>
                   {data.nextWorkout.planName} - Week {data.nextWorkout.weekNumber}
                 </Text>
               </View>
-              <View style={styles.startButton}>
-                <Text style={styles.startButtonText}>Start</Text>
+              <View style={[styles.startButton, { backgroundColor: colors.success }]}>
+                <Text style={[styles.startButtonText, { color: colors.buttonText }]}>Start</Text>
               </View>
             </TouchableOpacity>
           </View>
         ) : (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Get Started</Text>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Get Started</Text>
             <TouchableOpacity
-              style={styles.emptyCard}
+              style={[styles.emptyCard, { backgroundColor: colors.surface }]}
               onPress={() => navigation.navigate('Templates')}
             >
-              <Text style={styles.emptyCardText}>
+              <Text style={[styles.emptyCardText, { color: colors.textSecondary }]}>
                 No active workout plan. Tap to browse templates!
               </Text>
             </TouchableOpacity>
@@ -163,24 +164,24 @@ export default function HomeScreen() {
         {/* Recent Activity */}
         {data?.recentWorkouts && data.recentWorkouts.length > 0 && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Recent Activity</Text>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Recent Activity</Text>
             {data.recentWorkouts.map((workout) => (
               <TouchableOpacity
                 key={workout.id}
-                style={styles.recentCard}
+                style={[styles.recentCard, { backgroundColor: colors.surface }]}
                 onPress={() => handleViewWorkout(workout.id)}
               >
                 <View>
-                  <Text style={styles.recentName}>{workout.name}</Text>
-                  <Text style={styles.recentMeta}>
+                  <Text style={[styles.recentName, { color: colors.text }]}>{workout.name}</Text>
+                  <Text style={[styles.recentMeta, { color: colors.textSecondary }]}>
                     {workout.exerciseCount} exercises
                   </Text>
                 </View>
                 <View style={styles.recentRight}>
-                  <Text style={styles.recentDate}>
+                  <Text style={[styles.recentDate, { color: colors.textMuted }]}>
                     {formatDate(workout.completedAt)}
                   </Text>
-                  <Text style={styles.recentArrow}>›</Text>
+                  <Text style={[styles.recentArrow, { color: colors.textMuted }]}>›</Text>
                 </View>
               </TouchableOpacity>
             ))}
@@ -194,7 +195,6 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
   },
   loader: {
     flex: 1,
@@ -208,17 +208,14 @@ const styles = StyleSheet.create({
   },
   errorText: {
     fontSize: 16,
-    color: '#666',
     marginBottom: 16,
   },
   retryButton: {
-    backgroundColor: '#2196f3',
     paddingVertical: 12,
     paddingHorizontal: 24,
     borderRadius: 8,
   },
   retryButtonText: {
-    color: '#fff',
     fontWeight: 'bold',
   },
   scrollView: {
@@ -231,7 +228,6 @@ const styles = StyleSheet.create({
   greeting: {
     fontSize: 28,
     fontWeight: 'bold',
-    color: '#333',
   },
   statsGrid: {
     flexDirection: 'row',
@@ -242,17 +238,14 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 16,
     margin: 8,
-    backgroundColor: '#f5f5f5',
     borderRadius: 8,
   },
   statValue: {
     fontSize: 28,
     fontWeight: 'bold',
-    color: '#2196f3',
   },
   statLabel: {
     fontSize: 12,
-    color: '#666',
     marginTop: 4,
   },
   section: {
@@ -262,17 +255,14 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#333',
     marginBottom: 12,
   },
   nextWorkoutCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#e8f5e9',
     borderRadius: 12,
     padding: 16,
     borderWidth: 2,
-    borderColor: '#4caf50',
   },
   nextWorkoutInfo: {
     flex: 1,
@@ -280,40 +270,33 @@ const styles = StyleSheet.create({
   nextWorkoutName: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#333',
   },
   nextWorkoutPlan: {
     fontSize: 14,
-    color: '#666',
     marginTop: 4,
   },
   startButton: {
-    backgroundColor: '#4caf50',
     borderRadius: 8,
     paddingVertical: 10,
     paddingHorizontal: 20,
   },
   startButtonText: {
-    color: '#fff',
     fontWeight: 'bold',
     fontSize: 16,
   },
   emptyCard: {
-    backgroundColor: '#f5f5f5',
     borderRadius: 12,
     padding: 20,
     alignItems: 'center',
   },
   emptyCardText: {
     fontSize: 14,
-    color: '#666',
     textAlign: 'center',
   },
   recentCard: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: '#f5f5f5',
     borderRadius: 8,
     padding: 14,
     marginBottom: 8,
@@ -321,11 +304,9 @@ const styles = StyleSheet.create({
   recentName: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#333',
   },
   recentMeta: {
     fontSize: 12,
-    color: '#666',
     marginTop: 2,
   },
   recentRight: {
@@ -334,11 +315,9 @@ const styles = StyleSheet.create({
   },
   recentDate: {
     fontSize: 12,
-    color: '#999',
   },
   recentArrow: {
     fontSize: 20,
-    color: '#999',
     marginLeft: 8,
   },
 });

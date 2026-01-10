@@ -7,9 +7,9 @@ import { getDatabase } from '../db/init';
 // READ OPERATIONS - with offline cache support
 // ============================================
 
-export const getHomeData = async (userId: number): Promise<HomeData> => {
-  return cachedFetch(`home-${userId}`, async () => {
-    const response = await apiClient.get(`/workouts/user/${userId}/home`);
+export const getHomeData = async (): Promise<HomeData> => {
+  return cachedFetch('home', async () => {
+    const response = await apiClient.get('/workouts/home');
     return response.data;
   });
 };
@@ -28,27 +28,27 @@ export const getWorkoutPlanDetail = async (planId: number) => {
   });
 };
 
-export const getWorkoutHistory = async (userId: number): Promise<WorkoutHistory[]> => {
-  return cachedFetch(`history-${userId}`, async () => {
-    const response = await apiClient.get(`/workouts/user/${userId}/history`);
+export const getWorkoutHistory = async (): Promise<WorkoutHistory[]> => {
+  return cachedFetch('history', async () => {
+    const response = await apiClient.get('/workouts/history');
     return response.data;
   });
 };
 
-export const getUserPlans = async (userId: number) => {
-  return cachedFetch(`plans-${userId}`, async () => {
-    const response = await apiClient.get(`/workouts/user/${userId}/plans`);
+export const getUserPlans = async () => {
+  return cachedFetch('plans', async () => {
+    const response = await apiClient.get('/workouts/plans');
     return response.data;
   });
 };
 
-export const getActivePlan = async (userId: number) => {
-  return cachedFetch(`active-plan-${userId}`, async () => {
+export const getActivePlan = async () => {
+  return cachedFetch('active-plan', async () => {
     try {
-      const response = await apiClient.get(`/workouts/user/${userId}/active-plan`);
+      const response = await apiClient.get('/workouts/active-plan');
       return response.data;
-    } catch (error: any) {
-      if (error.response?.status === 404) {
+    } catch (error: unknown) {
+      if ((error as { response?: { status: number } }).response?.status === 404) {
         return null;
       }
       throw error;
@@ -64,12 +64,11 @@ export const getCurrentWorkout = async (planId: number) => {
 };
 
 export const getExerciseAlternatives = async (
-  exerciseId: number,
-  userId: number
+  exerciseId: number
 ): Promise<ExerciseAlternative[]> => {
   return cachedFetch(`alternatives-${exerciseId}`, async () => {
     const response = await apiClient.get(
-      `/workouts/exercises/alternatives/${exerciseId}?userId=${userId}`
+      `/workouts/exercises/alternatives/${exerciseId}`
     );
     return response.data;
   });
@@ -137,28 +136,26 @@ export const completeWorkoutDay = async (dayId: number) => {
 // ============================================
 
 export const generateWorkoutPlan = async (
-  userId: number,
   templateId: number,
   durationWeeks: number = 4
 ) => {
   const response = await apiClient.post('/workouts/generate', {
-    userId,
     templateId,
     durationWeeks,
   });
   // Invalidate related caches
-  await invalidateCache(`plans-${userId}`);
-  await invalidateCache(`home-${userId}`);
-  await invalidateCache(`active-plan-${userId}`);
+  await invalidateCache('plans');
+  await invalidateCache('home');
+  await invalidateCache('active-plan');
   return response.data;
 };
 
-export const activatePlan = async (planId: number, userId: number) => {
-  const response = await apiClient.post(`/workouts/plans/${planId}/activate`, { userId });
+export const activatePlan = async (planId: number) => {
+  const response = await apiClient.post(`/workouts/plans/${planId}/activate`);
   // Invalidate related caches
-  await invalidateCache(`plans-${userId}`);
-  await invalidateCache(`home-${userId}`);
-  await invalidateCache(`active-plan-${userId}`);
+  await invalidateCache('plans');
+  await invalidateCache('home');
+  await invalidateCache('active-plan');
   return response.data;
 };
 
@@ -174,11 +171,10 @@ export const deletePlan = async (planId: number) => {
 
 export const substituteExercise = async (
   exerciseLogId: number,
-  newExerciseId: number,
-  userId: number
+  newExerciseId: number
 ) => {
   const response = await apiClient.post(
-    `/workouts/exercises/${exerciseLogId}/substitute/${newExerciseId}?userId=${userId}`
+    `/workouts/exercises/${exerciseLogId}/substitute/${newExerciseId}`
   );
   return response.data;
 };

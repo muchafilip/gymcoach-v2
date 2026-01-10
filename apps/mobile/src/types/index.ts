@@ -1,3 +1,23 @@
+// Auth types
+export interface AuthUser {
+  id: number;
+  email: string;
+  displayName?: string;
+  profilePictureUrl?: string;
+}
+
+export interface AuthState {
+  user: AuthUser | null;
+  token: string | null;
+  isLoading: boolean;
+  isAuthenticated: boolean;
+}
+
+export interface AuthResponse {
+  token: string;
+  user: AuthUser;
+}
+
 export interface Equipment {
   id: number;
   name: string;

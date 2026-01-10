@@ -165,7 +165,7 @@ export const syncReferenceData = async (): Promise<void> => {
  * Push local user data to backend
  * This includes UserWorkoutPlan, UserWorkoutDay, ExerciseSet
  */
-export const syncUserData = async (userId: number): Promise<void> => {
+export const syncUserData = async (): Promise<void> => {
   try {
     const db = getDatabase();
 
@@ -203,7 +203,7 @@ export const syncUserData = async (userId: number): Promise<void> => {
           case 'UserEquipment':
             if (item.operation === 'SYNC') {
               // Sync user's equipment selection
-              await apiClient.post(`/users/${userId}/equipment`, payload);
+              await apiClient.put('/equipment/me', payload);
             }
             break;
 
@@ -255,7 +255,7 @@ export const addToSyncQueue = async (
 /**
  * Full sync - pull reference data and push user data
  */
-export const performFullSync = async (userId: number): Promise<void> => {
+export const performFullSync = async (): Promise<void> => {
   console.log('Starting full sync...');
 
   try {
@@ -263,7 +263,7 @@ export const performFullSync = async (userId: number): Promise<void> => {
     await syncReferenceData();
 
     // Then push any pending user data
-    await syncUserData(userId);
+    await syncUserData();
 
     console.log('Full sync completed successfully');
   } catch (error) {

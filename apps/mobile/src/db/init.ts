@@ -1,5 +1,5 @@
 import * as SQLite from 'expo-sqlite';
-import { DATABASE_NAME, DATABASE_VERSION, MOCK_USER } from '../utils/constants';
+import { DATABASE_NAME, DATABASE_VERSION } from '../utils/constants';
 
 let db: SQLite.SQLiteDatabase | null = null;
 
@@ -15,7 +15,6 @@ export const initDatabase = async (): Promise<SQLite.SQLiteDatabase> => {
 
   await createTables(db);
   await runMigrations(db);
-  await seedMockUser(db);
 
   return db;
 };
@@ -225,14 +224,3 @@ const createTables = async (database: SQLite.SQLiteDatabase) => {
   console.log('Database tables created successfully');
 };
 
-const seedMockUser = async (database: SQLite.SQLiteDatabase) => {
-  const result = await database.getFirstAsync('SELECT id FROM User WHERE id = 1');
-
-  if (!result) {
-    await database.runAsync(
-      'INSERT INTO User (id, email, display_name, subscription_status, sync_status) VALUES (?, ?, ?, ?, ?)',
-      [MOCK_USER.id, MOCK_USER.email, MOCK_USER.displayName, MOCK_USER.subscriptionStatus, 'synced']
-    );
-    console.log('Mock user seeded');
-  }
-};

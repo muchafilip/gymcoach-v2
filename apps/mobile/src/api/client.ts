@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { API_URL } from '../utils/constants';
+import { getAuthToken } from '../utils/auth';
 
 export const apiClient = axios.create({
   baseURL: API_URL,
@@ -9,14 +10,13 @@ export const apiClient = axios.create({
   },
 });
 
-// Request interceptor (for auth tokens later)
+// Request interceptor for auth tokens
 apiClient.interceptors.request.use(
-  (config) => {
-    // Future: Add auth token here
-    // const token = await getAuthToken();
-    // if (token) {
-    //   config.headers.Authorization = `Bearer ${token}`;
-    // }
+  async (config) => {
+    const token = await getAuthToken();
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
     return config;
   },
   (error) => Promise.reject(error)

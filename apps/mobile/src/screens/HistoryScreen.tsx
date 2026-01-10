@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { getWorkoutHistory, WorkoutHistory } from '../api/workouts';
-import { MOCK_USER_ID } from '../utils/constants';
+import { useThemeStore } from '../store/themeStore';
 
 type RootNavigation = {
   navigate: (screen: string, params?: any) => void;
@@ -19,6 +19,7 @@ type RootNavigation = {
 
 export default function HistoryScreen() {
   const navigation = useNavigation<RootNavigation>();
+  const { colors } = useThemeStore();
   const [workouts, setWorkouts] = useState<WorkoutHistory[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -33,7 +34,7 @@ export default function HistoryScreen() {
   const loadHistory = async () => {
     try {
       setError(null);
-      const data = await getWorkoutHistory(MOCK_USER_ID);
+      const data = await getWorkoutHistory();
       setWorkouts(data);
     } catch (err) {
       console.error('Error loading history:', err);
@@ -75,19 +76,19 @@ export default function HistoryScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.container}>
-        <ActivityIndicator size="large" style={styles.loader} />
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+        <ActivityIndicator size="large" color={colors.primary} style={styles.loader} />
       </SafeAreaView>
     );
   }
 
   if (error) {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
         <View style={styles.errorContainer}>
-          <Text style={styles.errorText}>{error}</Text>
-          <TouchableOpacity style={styles.retryButton} onPress={loadHistory}>
-            <Text style={styles.retryButtonText}>Retry</Text>
+          <Text style={[styles.errorText, { color: colors.textSecondary }]}>{error}</Text>
+          <TouchableOpacity style={[styles.retryButton, { backgroundColor: colors.primary }]} onPress={loadHistory}>
+            <Text style={[styles.retryButtonText, { color: colors.buttonText }]}>Retry</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -96,10 +97,10 @@ export default function HistoryScreen() {
 
   if (workouts.length === 0) {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
         <View style={styles.emptyState}>
-          <Text style={styles.emptyText}>No completed workouts yet</Text>
-          <Text style={styles.emptySubtext}>
+          <Text style={[styles.emptyText, { color: colors.text }]}>No completed workouts yet</Text>
+          <Text style={[styles.emptySubtext, { color: colors.textSecondary }]}>
             Complete your first workout to see it here
           </Text>
         </View>
@@ -108,31 +109,31 @@ export default function HistoryScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <FlatList
         data={workouts}
         keyExtractor={(item) => item.id.toString()}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
         }
         renderItem={({ item }) => (
           <TouchableOpacity
-            style={styles.card}
+            style={[styles.card, { backgroundColor: colors.surface, borderLeftColor: colors.success }]}
             onPress={() => handleViewWorkout(item.id)}
           >
             <View style={styles.cardHeader}>
-              <Text style={styles.dayName}>{item.dayName}</Text>
+              <Text style={[styles.dayName, { color: colors.text }]}>{item.dayName}</Text>
               <View style={styles.dateRow}>
-                <Text style={styles.date}>{formatDate(item.completedAt)}</Text>
-                <Text style={styles.arrow}>›</Text>
+                <Text style={[styles.date, { color: colors.textSecondary }]}>{formatDate(item.completedAt)}</Text>
+                <Text style={[styles.arrow, { color: colors.textSecondary }]}>›</Text>
               </View>
             </View>
             <View style={styles.cardStats}>
-              <Text style={styles.stat}>
+              <Text style={[styles.stat, { color: colors.textSecondary }]}>
                 {item.exerciseCount} exercises
               </Text>
-              <Text style={styles.separator}>•</Text>
-              <Text style={styles.stat}>
+              <Text style={[styles.separator, { color: colors.textSecondary }]}>•</Text>
+              <Text style={[styles.stat, { color: colors.textSecondary }]}>
                 {item.totalSets} sets completed
               </Text>
             </View>
@@ -147,7 +148,6 @@ export default function HistoryScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
   },
   loader: {
     flex: 1,
@@ -161,17 +161,14 @@ const styles = StyleSheet.create({
   },
   errorText: {
     fontSize: 16,
-    color: '#666',
     marginBottom: 16,
   },
   retryButton: {
-    backgroundColor: '#2196f3',
     paddingVertical: 12,
     paddingHorizontal: 24,
     borderRadius: 8,
   },
   retryButtonText: {
-    color: '#fff',
     fontWeight: 'bold',
   },
   list: {
@@ -180,10 +177,8 @@ const styles = StyleSheet.create({
   card: {
     padding: 16,
     marginBottom: 12,
-    backgroundColor: '#f5f5f5',
     borderRadius: 8,
     borderLeftWidth: 4,
-    borderLeftColor: '#4caf50',
   },
   cardHeader: {
     flexDirection: 'row',
@@ -197,7 +192,6 @@ const styles = StyleSheet.create({
   },
   date: {
     fontSize: 14,
-    color: '#666',
   },
   dateRow: {
     flexDirection: 'row',
@@ -205,7 +199,6 @@ const styles = StyleSheet.create({
   },
   arrow: {
     fontSize: 20,
-    color: '#666',
     marginLeft: 8,
   },
   cardStats: {
@@ -214,11 +207,9 @@ const styles = StyleSheet.create({
   },
   stat: {
     fontSize: 14,
-    color: '#666',
   },
   separator: {
     marginHorizontal: 8,
-    color: '#666',
   },
   emptyState: {
     flex: 1,
@@ -233,6 +224,5 @@ const styles = StyleSheet.create({
   },
   emptySubtext: {
     fontSize: 14,
-    color: '#666',
   },
 });

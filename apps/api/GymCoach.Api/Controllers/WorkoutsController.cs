@@ -1,13 +1,16 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using GymCoach.Api.Data;
 using GymCoach.Api.Models;
 using GymCoach.Api.Services;
+using GymCoach.Api.Extensions;
 
 namespace GymCoach.Api.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
+[Authorize]
 public class WorkoutsController : ControllerBase
 {
     private readonly GymCoachDbContext _context;
@@ -32,8 +35,9 @@ public class WorkoutsController : ControllerBase
     {
         try
         {
-            Console.WriteLine($"[Generate] UserId={request.UserId}, TemplateId={request.TemplateId}, DurationWeeks={request.DurationWeeks}");
-            var plan = await _generator.GenerateWorkoutPlan(request.UserId, request.TemplateId, request.DurationWeeks);
+            var userId = this.GetUserId();
+            Console.WriteLine($"[Generate] UserId={userId}, TemplateId={request.TemplateId}, DurationWeeks={request.DurationWeeks}");
+            var plan = await _generator.GenerateWorkoutPlan(userId, request.TemplateId, request.DurationWeeks);
             Console.WriteLine($"[Generate] Created plan {plan.Id} with {plan.DurationWeeks} weeks");
             return await GetPlanDto(plan.Id);
         }
@@ -46,9 +50,10 @@ public class WorkoutsController : ControllerBase
     /// <summary>
     /// Get home screen data (stats + next workout)
     /// </summary>
-    [HttpGet("user/{userId}/home")]
-    public async Task<ActionResult<HomeDataDto>> GetHomeData(int userId)
+    [HttpGet("home")]
+    public async Task<ActionResult<HomeDataDto>> GetHomeData()
     {
+        var userId = this.GetUserId();
         // Get active plan with next incomplete day
         var activePlan = await _context.UserWorkoutPlans
             .Include(p => p.WorkoutTemplate)
@@ -116,9 +121,10 @@ public class WorkoutsController : ControllerBase
     /// <summary>
     /// Get user's active workout plan
     /// </summary>
-    [HttpGet("user/{userId}/active-plan")]
-    public async Task<ActionResult<UserWorkoutPlanDetailDto>> GetActivePlan(int userId)
+    [HttpGet("active-plan")]
+    public async Task<ActionResult<UserWorkoutPlanDetailDto>> GetActivePlan()
     {
+        var userId = this.GetUserId();
         var plan = await _generator.GetActivePlan(userId);
         if (plan == null) return NotFound();
 
@@ -129,9 +135,10 @@ public class WorkoutsController : ControllerBase
     /// Activate a specific plan (deactivates all others)
     /// </summary>
     [HttpPost("plans/{planId:int}/activate")]
-    public async Task<IActionResult> ActivatePlan([FromRoute] int planId, [FromBody] ActivatePlanRequest request)
+    public async Task<IActionResult> ActivatePlan([FromRoute] int planId)
     {
-        var success = await _generator.ActivatePlan(planId, request.UserId);
+        var userId = this.GetUserId();
+        var success = await _generator.ActivatePlan(planId, userId);
         if (!success) return NotFound();
         return NoContent();
     }
@@ -184,8 +191,9 @@ public class WorkoutsController : ControllerBase
     /// Get alternative exercises for substitution
     /// </summary>
     [HttpGet("exercises/alternatives/{exerciseId}")]
-    public async Task<ActionResult<List<ExerciseAlternativeDto>>> GetExerciseAlternatives(int exerciseId, [FromQuery] int userId)
+    public async Task<ActionResult<List<ExerciseAlternativeDto>>> GetExerciseAlternatives(int exerciseId)
     {
+        var userId = this.GetUserId();
         var alternatives = await _generator.GetExerciseAlternatives(exerciseId, userId);
         return alternatives.Select(e => new ExerciseAlternativeDto
         {
@@ -199,8 +207,9 @@ public class WorkoutsController : ControllerBase
     /// Substitute an exercise in a workout
     /// </summary>
     [HttpPost("exercises/{exerciseLogId}/substitute/{newExerciseId}")]
-    public async Task<IActionResult> SubstituteExercise(int exerciseLogId, int newExerciseId, [FromQuery] int userId)
+    public async Task<IActionResult> SubstituteExercise(int exerciseLogId, int newExerciseId)
     {
+        var userId = this.GetUserId();
         var success = await _generator.SubstituteExercise(exerciseLogId, newExerciseId, userId);
         if (!success) return NotFound();
         return NoContent();
@@ -209,9 +218,10 @@ public class WorkoutsController : ControllerBase
     /// <summary>
     /// Get user's workout plans
     /// </summary>
-    [HttpGet("user/{userId}/plans")]
-    public async Task<ActionResult<IEnumerable<UserWorkoutPlanDto>>> GetUserPlans(int userId)
+    [HttpGet("plans")]
+    public async Task<ActionResult<IEnumerable<UserWorkoutPlanDto>>> GetUserPlans()
     {
+        var userId = this.GetUserId();
         var plans = await _context.UserWorkoutPlans
             .Where(p => p.UserId == userId)
             .Include(p => p.WorkoutTemplate)
@@ -422,18 +432,20 @@ public class WorkoutsController : ControllerBase
     /// <summary>
     /// Get progression suggestion for an exercise
     /// </summary>
-    [HttpGet("progression/{userId}/{exerciseId}")]
-    public async Task<ActionResult<SetTarget>> GetProgression(int userId, int exerciseId)
+    [HttpGet("progression/{exerciseId}")]
+    public async Task<ActionResult<SetTarget>> GetProgression(int exerciseId)
     {
+        var userId = this.GetUserId();
         return await _progression.CalculateNextTarget(userId, exerciseId);
     }
 
     /// <summary>
     /// Get workout history for a user
     /// </summary>
-    [HttpGet("user/{userId}/history")]
-    public async Task<ActionResult<List<WorkoutHistoryDto>>> GetWorkoutHistory(int userId)
+    [HttpGet("history")]
+    public async Task<ActionResult<List<WorkoutHistoryDto>>> GetWorkoutHistory()
     {
+        var userId = this.GetUserId();
         var history = await _context.UserWorkoutDays
             .Include(d => d.WorkoutDayTemplate)
             .Include(d => d.ExerciseLogs)
@@ -530,19 +542,11 @@ public class WorkoutsController : ControllerBase
 // Request/Response DTOs
 public class GeneratePlanRequest
 {
-    [System.Text.Json.Serialization.JsonPropertyName("userId")]
-    public int UserId { get; set; }
-
     [System.Text.Json.Serialization.JsonPropertyName("templateId")]
     public int TemplateId { get; set; }
 
     [System.Text.Json.Serialization.JsonPropertyName("durationWeeks")]
     public int DurationWeeks { get; set; } = 4;
-}
-
-public class ActivatePlanRequest
-{
-    public int UserId { get; set; }
 }
 
 public class ExerciseAlternativeDto

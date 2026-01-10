@@ -64,10 +64,20 @@ public class GymCoachDbContext : DbContext
         modelBuilder.Entity<UserEquipment>()
             .HasKey(u => new { u.UserId, u.EquipmentId });
 
-        // User unique email
+        // User indexes
         modelBuilder.Entity<User>()
             .HasIndex(u => u.Email)
             .IsUnique();
+
+        modelBuilder.Entity<User>()
+            .HasIndex(u => u.GoogleId)
+            .IsUnique()
+            .HasFilter("\"GoogleId\" IS NOT NULL");
+
+        modelBuilder.Entity<User>()
+            .HasIndex(u => u.AppleId)
+            .IsUnique()
+            .HasFilter("\"AppleId\" IS NOT NULL");
 
         // Exercise -> PrimaryMuscleGroup
         modelBuilder.Entity<Exercise>()

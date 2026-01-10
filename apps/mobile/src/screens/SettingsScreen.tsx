@@ -7,19 +7,23 @@ import {
   SafeAreaView,
   ActivityIndicator,
   Alert,
+  Switch,
 } from 'react-native';
 import { useNavigation, CommonActions } from '@react-navigation/native';
 import { useUserStore } from '../store/userStore';
+import { useAuthStore } from '../store/authStore';
 import { useSyncStore } from '../store/syncStore';
+import { useThemeStore } from '../store/themeStore';
 import { performFullSync } from '../db/sync';
 import { getUserEquipment, fetchEquipment } from '../api/equipment';
-import { MOCK_USER_ID } from '../utils/constants';
 import { Equipment } from '../types';
 
 export default function SettingsScreen() {
   const navigation = useNavigation<any>();
-  const { user, setEquipment } = useUserStore();
-  const { isSyncing, lastSyncedAt, setSyncing, setLastSynced } = useSyncStore();
+  const { user: authUser, signOut } = useAuthStore();
+  const { setEquipment } = useUserStore();
+  const { lastSyncedAt, setSyncing, setLastSynced } = useSyncStore();
+  const { isDarkMode, colors, toggleTheme } = useThemeStore();
   const [localSyncing, setLocalSyncing] = useState(false);
   const [equipmentNames, setEquipmentNames] = useState<string[]>([]);
   const [loadingEquipment, setLoadingEquipment] = useState(true);
@@ -31,7 +35,7 @@ export default function SettingsScreen() {
   const loadUserEquipment = async () => {
     try {
       const [userEquipmentIds, allEquipment] = await Promise.all([
-        getUserEquipment(MOCK_USER_ID),
+        getUserEquipment(),
         fetchEquipment(),
       ]);
 
@@ -65,7 +69,7 @@ export default function SettingsScreen() {
     setSyncing(true);
 
     try {
-      await performFullSync(MOCK_USER_ID);
+      await performFullSync();
       setLastSynced(new Date());
       Alert.alert('Success', 'Data synced successfully');
     } catch (error) {
@@ -75,6 +79,34 @@ export default function SettingsScreen() {
       setLocalSyncing(false);
       setSyncing(false);
     }
+  };
+
+  const handleSignOut = async () => {
+    Alert.alert(
+      'Sign Out',
+      'Are you sure you want to sign out?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Sign Out',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await signOut();
+              navigation.dispatch(
+                CommonActions.reset({
+                  index: 0,
+                  routes: [{ name: 'Login' }],
+                })
+              );
+            } catch (error) {
+              console.error('Sign out error:', error);
+              Alert.alert('Error', 'Failed to sign out');
+            }
+          },
+        },
+      ]
+    );
   };
 
   const formatLastSync = () => {
@@ -95,61 +127,73 @@ export default function SettingsScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>User</Text>
-        <View style={styles.card}>
-          <Text style={styles.label}>Name</Text>
-          <Text style={styles.value}>{user.displayName}</Text>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+      <View style={[styles.section, { borderBottomColor: colors.border }]}>
+        <Text style={[styles.sectionTitle, { color: colors.text }]}>Account</Text>
+        <View style={[styles.card, { borderBottomColor: colors.surfaceAlt }]}>
+          <Text style={[styles.label, { color: colors.textSecondary }]}>Name</Text>
+          <Text style={[styles.value, { color: colors.text }]}>{authUser?.displayName || 'User'}</Text>
         </View>
-        <View style={styles.card}>
-          <Text style={styles.label}>Email</Text>
-          <Text style={styles.value}>{user.email}</Text>
+        <View style={[styles.card, { borderBottomColor: colors.surfaceAlt }]}>
+          <Text style={[styles.label, { color: colors.textSecondary }]}>Email</Text>
+          <Text style={[styles.value, { color: colors.text }]}>{authUser?.email || '-'}</Text>
         </View>
-        <View style={styles.card}>
-          <Text style={styles.label}>Subscription</Text>
-          <Text style={styles.value}>{user.subscriptionStatus.toUpperCase()}</Text>
+        <TouchableOpacity style={[styles.signOutButton, { backgroundColor: colors.errorLight, borderColor: colors.error }]} onPress={handleSignOut}>
+          <Text style={[styles.signOutButtonText, { color: colors.error }]}>Sign Out</Text>
+        </TouchableOpacity>
+      </View>
+
+      <View style={[styles.section, { borderBottomColor: colors.border }]}>
+        <Text style={[styles.sectionTitle, { color: colors.text }]}>Appearance</Text>
+        <View style={[styles.card, { borderBottomColor: colors.surfaceAlt }]}>
+          <Text style={[styles.label, { color: colors.textSecondary }]}>Dark Mode</Text>
+          <Switch
+            value={isDarkMode}
+            onValueChange={toggleTheme}
+            trackColor={{ false: colors.border, true: colors.primary }}
+            thumbColor={colors.card}
+          />
         </View>
       </View>
 
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Sync</Text>
-        <View style={styles.card}>
-          <Text style={styles.label}>Last synced</Text>
-          <Text style={styles.value}>{formatLastSync()}</Text>
+      <View style={[styles.section, { borderBottomColor: colors.border }]}>
+        <Text style={[styles.sectionTitle, { color: colors.text }]}>Sync</Text>
+        <View style={[styles.card, { borderBottomColor: colors.surfaceAlt }]}>
+          <Text style={[styles.label, { color: colors.textSecondary }]}>Last synced</Text>
+          <Text style={[styles.value, { color: colors.text }]}>{formatLastSync()}</Text>
         </View>
 
         <TouchableOpacity
-          style={[styles.syncButton, localSyncing === true && styles.syncButtonDisabled]}
+          style={[styles.syncButton, { backgroundColor: colors.primary }, localSyncing && styles.syncButtonDisabled]}
           onPress={handleSync}
-          disabled={localSyncing === true}
+          disabled={localSyncing}
         >
-          {localSyncing === true ? (
-            <ActivityIndicator color="#fff" />
+          {localSyncing ? (
+            <ActivityIndicator color={colors.buttonText} />
           ) : (
-            <Text style={styles.syncButtonText}>Sync Now</Text>
+            <Text style={[styles.syncButtonText, { color: colors.buttonText }]}>Sync Now</Text>
           )}
         </TouchableOpacity>
       </View>
 
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Equipment</Text>
-        <View style={styles.card}>
-          <Text style={styles.label}>My Equipment</Text>
-          <Text style={styles.value}>
+      <View style={[styles.section, { borderBottomColor: colors.border }]}>
+        <Text style={[styles.sectionTitle, { color: colors.text }]}>Equipment</Text>
+        <View style={[styles.card, { borderBottomColor: colors.surfaceAlt }]}>
+          <Text style={[styles.label, { color: colors.textSecondary }]}>My Equipment</Text>
+          <Text style={[styles.value, { color: colors.text }]}>
             {loadingEquipment ? 'Loading...' : equipmentNames.length > 0 ? equipmentNames.join(', ') : 'None'}
           </Text>
         </View>
-        <TouchableOpacity style={styles.editButton} onPress={handleEditEquipment}>
-          <Text style={styles.editButtonText}>Edit Equipment</Text>
+        <TouchableOpacity style={[styles.editButton, { backgroundColor: colors.surface, borderColor: colors.border }]} onPress={handleEditEquipment}>
+          <Text style={[styles.editButtonText, { color: colors.text }]}>Edit Equipment</Text>
         </TouchableOpacity>
       </View>
 
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>About</Text>
-        <View style={styles.card}>
-          <Text style={styles.label}>Version</Text>
-          <Text style={styles.value}>1.0.0</Text>
+      <View style={[styles.section, { borderBottomColor: colors.border }]}>
+        <Text style={[styles.sectionTitle, { color: colors.text }]}>About</Text>
+        <View style={[styles.card, { borderBottomColor: colors.surfaceAlt }]}>
+          <Text style={[styles.label, { color: colors.textSecondary }]}>Version</Text>
+          <Text style={[styles.value, { color: colors.text }]}>1.0.0</Text>
         </View>
       </View>
     </SafeAreaView>
@@ -159,12 +203,10 @@ export default function SettingsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
   },
   section: {
     padding: 20,
     borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
   },
   sectionTitle: {
     fontSize: 18,
@@ -174,45 +216,52 @@ const styles = StyleSheet.create({
   card: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'center',
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
   },
   label: {
     fontSize: 16,
-    color: '#666',
   },
   value: {
     fontSize: 16,
     fontWeight: '500',
+    flex: 1,
+    textAlign: 'right',
   },
   syncButton: {
     marginTop: 16,
-    backgroundColor: '#2196f3',
     padding: 16,
     borderRadius: 8,
     alignItems: 'center',
   },
   syncButtonDisabled: {
-    backgroundColor: '#ccc',
+    opacity: 0.6,
   },
   syncButtonText: {
-    color: '#fff',
     fontSize: 16,
     fontWeight: 'bold',
   },
   editButton: {
     marginTop: 16,
-    backgroundColor: '#f5f5f5',
     padding: 16,
     borderRadius: 8,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#e0e0e0',
   },
   editButtonText: {
-    color: '#333',
     fontSize: 16,
     fontWeight: '500',
+  },
+  signOutButton: {
+    marginTop: 16,
+    padding: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+    borderWidth: 1,
+  },
+  signOutButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
   },
 });

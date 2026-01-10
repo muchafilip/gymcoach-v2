@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { NavigationContainer } from '@react-navigation/native';
+import { NavigationContainer, DefaultTheme, DarkTheme } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { ActivityIndicator, View } from 'react-native';
 
 // Screens
+import LoginScreen from '../screens/LoginScreen';
 import OnboardingScreen from '../screens/OnboardingScreen';
 import HomeScreen from '../screens/HomeScreen';
 import TemplatesScreen from '../screens/TemplatesScreen';
@@ -13,11 +14,13 @@ import WorkoutDayScreen from '../screens/WorkoutDayScreen';
 import HistoryScreen from '../screens/HistoryScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 
-// API
+// Auth & Theme
+import { useAuthStore } from '../store/authStore';
+import { useThemeStore } from '../store/themeStore';
 import { getUserEquipment } from '../api/equipment';
-import { MOCK_USER_ID } from '../utils/constants';
 
 export type RootStackParamList = {
+  Login: undefined;
   Onboarding: undefined;
   MainTabs: undefined;
 };
@@ -40,8 +43,18 @@ const Tab = createBottomTabNavigator<MainTabParamList>();
 const TemplatesStack = createNativeStackNavigator<TemplatesStackParamList>();
 
 function TemplatesNavigator() {
+  const { colors } = useThemeStore();
+
   return (
-    <TemplatesStack.Navigator>
+    <TemplatesStack.Navigator
+      screenOptions={{
+        headerStyle: {
+          backgroundColor: colors.card,
+        },
+        headerTintColor: colors.text,
+        headerShadowVisible: false,
+      }}
+    >
       <TemplatesStack.Screen
         name="TemplatesList"
         component={TemplatesScreen}
@@ -62,8 +75,23 @@ function TemplatesNavigator() {
 }
 
 function MainTabs() {
+  const { colors, isDarkMode } = useThemeStore();
+
   return (
-    <Tab.Navigator>
+    <Tab.Navigator
+      screenOptions={{
+        headerStyle: {
+          backgroundColor: colors.card,
+        },
+        headerTintColor: colors.text,
+        tabBarStyle: {
+          backgroundColor: colors.card,
+          borderTopColor: colors.border,
+        },
+        tabBarActiveTintColor: colors.primary,
+        tabBarInactiveTintColor: colors.textMuted,
+      }}
+    >
       <Tab.Screen name="Home" component={HomeScreen} />
       <Tab.Screen
         name="Templates"
@@ -77,40 +105,72 @@ function MainTabs() {
 }
 
 export default function AppNavigator() {
-  const [isLoading, setIsLoading] = useState(true);
+  const { isAuthenticated, isLoading: authLoading, initialize } = useAuthStore();
+  const { colors, isDarkMode, initialize: initializeTheme } = useThemeStore();
+  const [isCheckingOnboarding, setIsCheckingOnboarding] = useState(false);
   const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState(false);
 
+  // Initialize auth and theme on mount
   useEffect(() => {
-    checkOnboardingStatus();
-  }, []);
+    initialize();
+    initializeTheme();
+  }, [initialize, initializeTheme]);
+
+  // Check onboarding status when authenticated
+  useEffect(() => {
+    if (isAuthenticated) {
+      checkOnboardingStatus();
+    }
+  }, [isAuthenticated]);
 
   const checkOnboardingStatus = async () => {
+    setIsCheckingOnboarding(true);
     try {
-      const equipment = await getUserEquipment(MOCK_USER_ID);
+      const equipment = await getUserEquipment();
       setHasCompletedOnboarding(equipment.length > 0);
     } catch (error) {
       console.warn('Could not check onboarding status:', error);
-      // Default to showing onboarding if we can't check
       setHasCompletedOnboarding(false);
     } finally {
-      setIsLoading(false);
+      setIsCheckingOnboarding(false);
     }
   };
 
-  if (isLoading) {
+  if (authLoading || isCheckingOnboarding) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        <ActivityIndicator size="large" />
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}>
+        <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
   }
 
+  // Determine initial route based on auth and onboarding status
+  const getInitialRoute = (): keyof RootStackParamList => {
+    if (!isAuthenticated) return 'Login';
+    if (!hasCompletedOnboarding) return 'Onboarding';
+    return 'MainTabs';
+  };
+
+  const navigationTheme = {
+    ...(isDarkMode ? DarkTheme : DefaultTheme),
+    colors: {
+      ...(isDarkMode ? DarkTheme.colors : DefaultTheme.colors),
+      primary: colors.primary,
+      background: colors.background,
+      card: colors.card,
+      text: colors.text,
+      border: colors.border,
+      notification: colors.primary,
+    },
+  };
+
   return (
-    <NavigationContainer>
+    <NavigationContainer theme={navigationTheme}>
       <RootStack.Navigator
         screenOptions={{ headerShown: false }}
-        initialRouteName={hasCompletedOnboarding ? "MainTabs" : "Onboarding"}
+        initialRouteName={getInitialRoute()}
       >
+        <RootStack.Screen name="Login" component={LoginScreen} />
         <RootStack.Screen name="Onboarding" component={OnboardingScreen} />
         <RootStack.Screen name="MainTabs" component={MainTabs} />
       </RootStack.Navigator>

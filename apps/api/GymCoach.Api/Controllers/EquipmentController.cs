@@ -1,3 +1,10 @@
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using GymCoach.Api.Data;
+using GymCoach.Api.Models;
+using GymCoach.Api.Extensions;
+
 namespace GymCoach.Api.Controllers;
 
 [ApiController]
@@ -11,6 +18,9 @@ public class EquipmentController : ControllerBase
         _context = context;
     }
 
+    /// <summary>
+    /// Get all equipment types (public - no auth needed)
+    /// </summary>
     [HttpGet]
     public async Task<ActionResult<IEnumerable<Equipment>>> GetAll()
     {
@@ -26,6 +36,7 @@ public class EquipmentController : ControllerBase
     }
 
     [HttpPost]
+    [Authorize]
     public async Task<ActionResult<Equipment>> Create(Equipment equipment)
     {
         _context.Equipment.Add(equipment);
@@ -34,6 +45,7 @@ public class EquipmentController : ControllerBase
     }
 
     [HttpPut("{id:int}")]
+    [Authorize]
     public async Task<IActionResult> Update(int id, Equipment equipment)
     {
         if (id != equipment.Id) return BadRequest();
@@ -44,6 +56,7 @@ public class EquipmentController : ControllerBase
     }
 
     [HttpDelete("{id:int}")]
+    [Authorize]
     public async Task<IActionResult> Delete(int id)
     {
         var equipment = await _context.Equipment.FindAsync(id);
@@ -55,11 +68,13 @@ public class EquipmentController : ControllerBase
     }
 
     /// <summary>
-    /// Get equipment IDs for a user
+    /// Get current user's equipment IDs
     /// </summary>
-    [HttpGet("user/{userId:int}")]
-    public async Task<ActionResult<List<int>>> GetUserEquipment(int userId)
+    [HttpGet("me")]
+    [Authorize]
+    public async Task<ActionResult<List<int>>> GetMyEquipment()
     {
+        var userId = this.GetUserId();
         var equipmentIds = await _context.Set<UserEquipment>()
             .Where(ue => ue.UserId == userId)
             .Select(ue => ue.EquipmentId)
@@ -69,14 +84,13 @@ public class EquipmentController : ControllerBase
     }
 
     /// <summary>
-    /// Save user's equipment selection (replaces all)
+    /// Save current user's equipment selection (replaces all)
     /// </summary>
-    [HttpPut("user/{userId:int}")]
-    public async Task<IActionResult> SaveUserEquipment(int userId, [FromBody] SaveUserEquipmentRequest request)
+    [HttpPut("me")]
+    [Authorize]
+    public async Task<IActionResult> SaveMyEquipment([FromBody] SaveUserEquipmentRequest request)
     {
-        // Verify user exists
-        var userExists = await _context.Users.AnyAsync(u => u.Id == userId);
-        if (!userExists) return NotFound("User not found");
+        var userId = this.GetUserId();
 
         // Remove existing equipment
         var existing = await _context.Set<UserEquipment>()

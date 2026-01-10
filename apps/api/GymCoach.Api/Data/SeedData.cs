@@ -224,19 +224,6 @@ public static class SeedData
             new ExerciseSecondaryMuscle { ExerciseId = 37, MuscleGroupId = 6 }
         );
 
-        // Test User (for development)
-        modelBuilder.Entity<User>().HasData(
-            new User
-            {
-                Id = 1,
-                Email = "guest@gymcoach.app",
-                PasswordHash = "dev-only-no-auth-yet",
-                DisplayName = "Guest User",
-                SubscriptionStatus = SubscriptionStatus.Free,
-                CreatedAt = new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc)
-            }
-        );
-
         // Workout Templates
         modelBuilder.Entity<WorkoutTemplate>().HasData(
             new WorkoutTemplate

@@ -14,6 +14,7 @@ import { useNavigation, useRoute, RouteProp, useFocusEffect } from '@react-navig
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { TemplatesStackParamList } from '../navigation/AppNavigator';
 import { getWorkoutPlanDetail } from '../api/workouts';
+import { useThemeStore } from '../store/themeStore';
 
 type NavigationProp = NativeStackNavigationProp<TemplatesStackParamList, 'WorkoutPlan'>;
 type RouteParams = RouteProp<TemplatesStackParamList, 'WorkoutPlan'>;
@@ -41,6 +42,7 @@ export default function WorkoutPlanScreen() {
   const navigation = useNavigation<NavigationProp>();
   const route = useRoute<RouteParams>();
   const { planId } = route.params;
+  const { colors } = useThemeStore();
 
   const [plan, setPlan] = useState<PlanDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -121,19 +123,19 @@ export default function WorkoutPlanScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.container}>
-        <ActivityIndicator size="large" style={styles.loader} />
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+        <ActivityIndicator size="large" color={colors.primary} style={styles.loader} />
       </SafeAreaView>
     );
   }
 
   if (error || !plan) {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
         <View style={styles.errorContainer}>
-          <Text style={styles.errorText}>{error || 'Plan not found'}</Text>
-          <TouchableOpacity style={styles.retryButton} onPress={loadPlanData}>
-            <Text style={styles.retryButtonText}>Retry</Text>
+          <Text style={[styles.errorText, { color: colors.textSecondary }]}>{error || 'Plan not found'}</Text>
+          <TouchableOpacity style={[styles.retryButton, { backgroundColor: colors.primary }]} onPress={loadPlanData}>
+            <Text style={[styles.retryButtonText, { color: colors.buttonText }]}>Retry</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -144,33 +146,34 @@ export default function WorkoutPlanScreen() {
     <ScrollView
       style={styles.calendarContainer}
       refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
       }
     >
       {weekGroups.map(({ week, days: weekDays }) => (
         <View key={week} style={styles.weekSection}>
-          <Text style={styles.weekTitle}>Week {week}</Text>
+          <Text style={[styles.weekTitle, { color: colors.text }]}>Week {week}</Text>
           <View style={styles.weekDays}>
             {weekDays.map((day) => (
               <TouchableOpacity
                 key={day.id}
                 style={[
                   styles.dayCard,
-                  day.completedAt !== null && styles.dayCardCompleted,
+                  { backgroundColor: colors.surface, borderColor: colors.border },
+                  day.completedAt !== null && { backgroundColor: colors.successLight, borderColor: colors.success },
                   day.exerciseCount === 0 && styles.dayCardEmpty,
                 ]}
                 onPress={() => handleDayPress(day.id)}
                 disabled={day.exerciseCount === 0}
               >
-                <Text style={styles.dayCardName}>{day.name}</Text>
+                <Text style={[styles.dayCardName, { color: colors.text }]}>{day.name}</Text>
                 {day.completedAt !== null ? (
-                  <Text style={styles.dayCardCheck}>✓</Text>
+                  <Text style={[styles.dayCardCheck, { color: colors.success }]}>✓</Text>
                 ) : day.exerciseCount > 0 ? (
-                  <Text style={styles.dayCardExercises}>
+                  <Text style={[styles.dayCardExercises, { color: colors.textSecondary }]}>
                     {day.exerciseCount} ex
                   </Text>
                 ) : (
-                  <Text style={styles.dayCardPending}>...</Text>
+                  <Text style={[styles.dayCardPending, { color: colors.textMuted }]}>...</Text>
                 )}
               </TouchableOpacity>
             ))}
@@ -185,30 +188,31 @@ export default function WorkoutPlanScreen() {
       data={plan.days}
       keyExtractor={(item) => item.id.toString()}
       refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
       }
       renderItem={({ item }) => (
         <TouchableOpacity
           style={[
             styles.card,
-            item.completedAt !== null && styles.cardCompleted,
+            { backgroundColor: colors.surface },
+            item.completedAt !== null && { backgroundColor: colors.successLight, borderColor: colors.success },
           ]}
           onPress={() => handleDayPress(item.id)}
         >
           <View style={styles.cardLeft}>
-            <Text style={styles.dayNumber}>
+            <Text style={[styles.dayNumber, { color: colors.textSecondary }]}>
               Week {item.weekNumber} · Day {item.dayNumber}
             </Text>
-            <Text style={styles.dayName}>{item.name}</Text>
-            <Text style={styles.exerciseCount}>
+            <Text style={[styles.dayName, { color: colors.text }]}>{item.name}</Text>
+            <Text style={[styles.exerciseCount, { color: colors.textSecondary }]}>
               {item.exerciseCount} exercises
             </Text>
           </View>
           <View style={styles.cardRight}>
             {item.completedAt !== null ? (
-              <Text style={styles.completedBadge}>✓</Text>
+              <Text style={[styles.completedBadge, { color: colors.success }]}>✓</Text>
             ) : (
-              <Text style={styles.arrow}>→</Text>
+              <Text style={[styles.arrow, { color: colors.primary }]}>→</Text>
             )}
           </View>
         </TouchableOpacity>
@@ -218,34 +222,35 @@ export default function WorkoutPlanScreen() {
   );
 
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+      <View style={[styles.header, { borderBottomColor: colors.border }]}>
         <View style={styles.headerTop}>
           <View>
-            <Text style={styles.planName}>{plan.templateName}</Text>
-            <Text style={styles.subtitle}>
+            <Text style={[styles.planName, { color: colors.text }]}>{plan.templateName}</Text>
+            <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
               {completedCount}/{totalDays} completed · {plan.durationWeeks} weeks
             </Text>
           </View>
           {plan.isActive && (
-            <View style={styles.activeBadge}>
-              <Text style={styles.activeBadgeText}>Active</Text>
+            <View style={[styles.activeBadge, { backgroundColor: colors.success }]}>
+              <Text style={[styles.activeBadgeText, { color: colors.buttonText }]}>Active</Text>
             </View>
           )}
         </View>
 
-        <View style={styles.viewToggle}>
+        <View style={[styles.viewToggle, { backgroundColor: colors.surfaceAlt }]}>
           <TouchableOpacity
             style={[
               styles.toggleButton,
-              viewMode === 'calendar' && styles.toggleButtonActive,
+              viewMode === 'calendar' && [styles.toggleButtonActive, { backgroundColor: colors.card }],
             ]}
             onPress={() => setViewMode('calendar')}
           >
             <Text
               style={[
                 styles.toggleText,
-                viewMode === 'calendar' && styles.toggleTextActive,
+                { color: colors.textSecondary },
+                viewMode === 'calendar' && { color: colors.text, fontWeight: '600' },
               ]}
             >
               Calendar
@@ -254,14 +259,15 @@ export default function WorkoutPlanScreen() {
           <TouchableOpacity
             style={[
               styles.toggleButton,
-              viewMode === 'list' && styles.toggleButtonActive,
+              viewMode === 'list' && [styles.toggleButtonActive, { backgroundColor: colors.card }],
             ]}
             onPress={() => setViewMode('list')}
           >
             <Text
               style={[
                 styles.toggleText,
-                viewMode === 'list' && styles.toggleTextActive,
+                { color: colors.textSecondary },
+                viewMode === 'list' && { color: colors.text, fontWeight: '600' },
               ]}
             >
               List
@@ -278,7 +284,6 @@ export default function WorkoutPlanScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
   },
   loader: {
     flex: 1,
@@ -292,23 +297,19 @@ const styles = StyleSheet.create({
   },
   errorText: {
     fontSize: 16,
-    color: '#666',
     marginBottom: 16,
   },
   retryButton: {
-    backgroundColor: '#2196f3',
     paddingVertical: 12,
     paddingHorizontal: 24,
     borderRadius: 8,
   },
   retryButtonText: {
-    color: '#fff',
     fontWeight: 'bold',
   },
   header: {
     padding: 20,
     borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
   },
   headerTop: {
     flexDirection: 'row',
@@ -323,22 +324,18 @@ const styles = StyleSheet.create({
   },
   subtitle: {
     fontSize: 14,
-    color: '#666',
   },
   activeBadge: {
-    backgroundColor: '#4caf50',
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 4,
   },
   activeBadgeText: {
-    color: '#fff',
     fontSize: 12,
     fontWeight: 'bold',
   },
   viewToggle: {
     flexDirection: 'row',
-    backgroundColor: '#f0f0f0',
     borderRadius: 8,
     padding: 4,
   },
@@ -349,18 +346,13 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     alignItems: 'center',
   },
-  toggleButtonActive: {
-    backgroundColor: '#fff',
-  },
+  toggleButtonActive: {},
   toggleText: {
     fontSize: 14,
-    color: '#666',
   },
   toggleTextActive: {
-    color: '#333',
     fontWeight: '600',
   },
-  // Calendar view styles
   calendarContainer: {
     flex: 1,
     padding: 16,
@@ -371,7 +363,6 @@ const styles = StyleSheet.create({
   weekTitle: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#333',
     marginBottom: 12,
   },
   weekDays: {
@@ -382,41 +373,31 @@ const styles = StyleSheet.create({
   dayCard: {
     width: '31%',
     aspectRatio: 1,
-    backgroundColor: '#f5f5f5',
     borderRadius: 8,
     borderWidth: 2,
-    borderColor: '#e0e0e0',
     padding: 10,
     justifyContent: 'space-between',
   },
-  dayCardCompleted: {
-    backgroundColor: '#e8f5e9',
-    borderColor: '#4caf50',
-  },
+  dayCardCompleted: {},
   dayCardEmpty: {
     opacity: 0.5,
   },
   dayCardName: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#333',
   },
   dayCardCheck: {
     fontSize: 20,
-    color: '#4caf50',
     alignSelf: 'flex-end',
   },
   dayCardExercises: {
     fontSize: 11,
-    color: '#666',
     alignSelf: 'flex-end',
   },
   dayCardPending: {
     fontSize: 14,
-    color: '#999',
     alignSelf: 'flex-end',
   },
-  // List view styles
   list: {
     padding: 20,
   },
@@ -426,21 +407,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 16,
     marginBottom: 12,
-    backgroundColor: '#f5f5f5',
     borderRadius: 8,
     borderWidth: 2,
     borderColor: 'transparent',
   },
-  cardCompleted: {
-    backgroundColor: '#e8f5e9',
-    borderColor: '#4caf50',
-  },
+  cardCompleted: {},
   cardLeft: {
     flex: 1,
   },
   dayNumber: {
     fontSize: 12,
-    color: '#666',
     marginBottom: 4,
   },
   dayName: {
@@ -450,17 +426,14 @@ const styles = StyleSheet.create({
   },
   exerciseCount: {
     fontSize: 14,
-    color: '#666',
   },
   cardRight: {
     marginLeft: 16,
   },
   arrow: {
     fontSize: 24,
-    color: '#2196f3',
   },
   completedBadge: {
     fontSize: 28,
-    color: '#4caf50',
   },
 });

@@ -1,9 +1,8 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  FlatList,
   TouchableOpacity,
   SafeAreaView,
   ActivityIndicator,
@@ -25,7 +24,7 @@ import {
   deactivatePlan,
   deletePlan,
 } from '../api/workouts';
-import { MOCK_USER_ID } from '../utils/constants';
+import { useThemeStore } from '../store/themeStore';
 
 interface UserPlan {
   id: number;
@@ -42,6 +41,7 @@ const DURATION_OPTIONS = [4, 6, 8];
 
 export default function TemplatesScreen() {
   const navigation = useNavigation<NavigationProp>();
+  const { colors } = useThemeStore();
   const [templates, setTemplates] = useState<WorkoutTemplate[]>([]);
   const [userPlans, setUserPlans] = useState<UserPlan[]>([]);
   const [activePlanId, setActivePlanId] = useState<number | null>(null);
@@ -62,7 +62,7 @@ export default function TemplatesScreen() {
     try {
       const [templatesData, plansData] = await Promise.all([
         fetchTemplates(),
-        getUserPlans(MOCK_USER_ID),
+        getUserPlans(),
       ]);
       setTemplates(templatesData);
 
@@ -89,7 +89,7 @@ export default function TemplatesScreen() {
     setGenerating(template.id);
     try {
       // Check for existing active plan with this template
-      const activePlan = await getActivePlan(MOCK_USER_ID);
+      const activePlan = await getActivePlan();
       if (activePlan && activePlan.templateId === template.id) {
         // Navigate to existing plan to prevent data loss
         navigation.navigate('WorkoutPlan', { planId: activePlan.id });
@@ -117,7 +117,7 @@ export default function TemplatesScreen() {
 
     try {
       // Generate workout plan with duration
-      const plan = await generateWorkoutPlan(MOCK_USER_ID, selectedTemplate.id, durationWeeks);
+      const plan = await generateWorkoutPlan(selectedTemplate.id, durationWeeks);
       console.log('Generated plan:', plan);
 
       // Reload plans and navigate
@@ -146,7 +146,7 @@ export default function TemplatesScreen() {
   const handleActivatePlan = async () => {
     if (!selectedPlan) return;
     try {
-      await activatePlan(selectedPlan.id, MOCK_USER_ID);
+      await activatePlan(selectedPlan.id);
       setActivePlanId(selectedPlan.id);
       setShowPlanModal(false);
       await loadData();
@@ -220,46 +220,47 @@ export default function TemplatesScreen() {
 
   if (loading === true) {
     return (
-      <SafeAreaView style={styles.container}>
-        <ActivityIndicator size="large" />
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+        <ActivityIndicator size="large" color={colors.primary} />
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {/* My Plans Section */}
         {userPlans.length > 0 && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>My Plans</Text>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>My Plans</Text>
             {userPlans.map((plan) => (
               <TouchableOpacity
                 key={plan.id}
                 style={[
                   styles.planCard,
-                  plan.isActive && styles.planCardActive,
+                  { backgroundColor: colors.surface, borderColor: colors.border },
+                  plan.isActive && { backgroundColor: colors.successLight, borderColor: colors.success },
                 ]}
                 onPress={() => handlePlanPress(plan)}
               >
                 <View style={styles.planCardContent}>
                   <View style={styles.planCardLeft}>
-                    <Text style={styles.planCardTitle}>{plan.templateName}</Text>
-                    <Text style={styles.planCardMeta}>
+                    <Text style={[styles.planCardTitle, { color: colors.text }]}>{plan.templateName}</Text>
+                    <Text style={[styles.planCardMeta, { color: colors.textSecondary }]}>
                       Started {formatDate(plan.startDate)} · {plan.completedDays}/{plan.totalDays} days
                     </Text>
                   </View>
                   {plan.isActive && (
-                    <View style={styles.activeBadge}>
-                      <Text style={styles.activeBadgeText}>Active</Text>
+                    <View style={[styles.activeBadge, { backgroundColor: colors.success }]}>
+                      <Text style={[styles.activeBadgeText, { color: colors.buttonText }]}>Active</Text>
                     </View>
                   )}
                 </View>
-                <View style={styles.progressBar}>
+                <View style={[styles.progressBar, { backgroundColor: colors.border }]}>
                   <View
                     style={[
                       styles.progressFill,
-                      { width: `${(plan.completedDays / plan.totalDays) * 100}%` },
+                      { width: `${(plan.completedDays / plan.totalDays) * 100}%`, backgroundColor: colors.success },
                     ]}
                   />
                 </View>
@@ -270,29 +271,29 @@ export default function TemplatesScreen() {
 
         {/* Templates Section */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>
             {userPlans.length > 0 ? 'Start New Plan' : 'Workout Templates'}
           </Text>
           {templates.map((item) => (
             <TouchableOpacity
               key={item.id}
-              style={styles.card}
+              style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}
               onPress={() => handleSelectTemplate(item)}
               disabled={generating === item.id}
             >
               <View style={styles.cardHeader}>
-                <Text style={styles.cardTitle}>{item.name}</Text>
+                <Text style={[styles.cardTitle, { color: colors.text }]}>{item.name}</Text>
                 {item.isPremium && (
-                  <View style={styles.badge}>
-                    <Text style={styles.badgeText}>PREMIUM</Text>
+                  <View style={[styles.badge, { backgroundColor: colors.warning }]}>
+                    <Text style={[styles.badgeText, { color: colors.buttonText }]}>PREMIUM</Text>
                   </View>
                 )}
               </View>
               {item.description ? (
-                <Text style={styles.cardDescription}>{item.description}</Text>
+                <Text style={[styles.cardDescription, { color: colors.textSecondary }]}>{item.description}</Text>
               ) : null}
               {generating === item.id && (
-                <ActivityIndicator size="small" style={styles.loader} />
+                <ActivityIndicator size="small" style={styles.loader} color={colors.primary} />
               )}
             </TouchableOpacity>
           ))}
@@ -307,9 +308,9 @@ export default function TemplatesScreen() {
         onRequestClose={() => setShowDurationModal(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Select Plan Duration</Text>
-            <Text style={styles.modalSubtitle}>
+          <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
+            <Text style={[styles.modalTitle, { color: colors.text }]}>Select Plan Duration</Text>
+            <Text style={[styles.modalSubtitle, { color: colors.textSecondary }]}>
               {selectedTemplate?.name}
             </Text>
 
@@ -317,23 +318,23 @@ export default function TemplatesScreen() {
               {DURATION_OPTIONS.map((weeks) => (
                 <TouchableOpacity
                   key={weeks}
-                  style={styles.durationButton}
+                  style={[styles.durationButton, { backgroundColor: colors.primary }]}
                   onPress={() => handleCreatePlan(weeks)}
                 >
-                  <Text style={styles.durationWeeks}>{weeks}</Text>
-                  <Text style={styles.durationLabel}>weeks</Text>
+                  <Text style={[styles.durationWeeks, { color: colors.buttonText }]}>{weeks}</Text>
+                  <Text style={[styles.durationLabel, { color: colors.buttonText }]}>weeks</Text>
                 </TouchableOpacity>
               ))}
             </View>
 
             <Pressable
-              style={styles.cancelButton}
+              style={[styles.cancelButton, { borderColor: colors.border }]}
               onPress={() => {
                 setShowDurationModal(false);
                 setSelectedTemplate(null);
               }}
             >
-              <Text style={styles.cancelButtonText}>Cancel</Text>
+              <Text style={[styles.cancelButtonText, { color: colors.text }]}>Cancel</Text>
             </Pressable>
           </View>
         </View>
@@ -347,52 +348,52 @@ export default function TemplatesScreen() {
         onRequestClose={() => setShowPlanModal(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>{selectedPlan?.templateName}</Text>
-            <Text style={styles.modalSubtitle}>
+          <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
+            <Text style={[styles.modalTitle, { color: colors.text }]}>{selectedPlan?.templateName}</Text>
+            <Text style={[styles.modalSubtitle, { color: colors.textSecondary }]}>
               {selectedPlan?.completedDays}/{selectedPlan?.totalDays} days completed
             </Text>
 
             <View style={styles.planActions}>
               <TouchableOpacity
-                style={styles.planActionButton}
+                style={[styles.planActionButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
                 onPress={handleViewPlan}
               >
-                <Text style={styles.planActionText}>View Plan</Text>
+                <Text style={[styles.planActionText, { color: colors.text }]}>View Plan</Text>
               </TouchableOpacity>
 
               {selectedPlan?.isActive ? (
                 <TouchableOpacity
-                  style={[styles.planActionButton, styles.planActionWarning]}
+                  style={[styles.planActionButton, { backgroundColor: colors.warningLight, borderColor: colors.warning }]}
                   onPress={handleDeactivatePlan}
                 >
-                  <Text style={styles.planActionTextWarning}>Deactivate</Text>
+                  <Text style={[styles.planActionTextWarning, { color: colors.warning }]}>Deactivate</Text>
                 </TouchableOpacity>
               ) : (
                 <TouchableOpacity
-                  style={[styles.planActionButton, styles.planActionPrimary]}
+                  style={[styles.planActionButton, { backgroundColor: colors.primary, borderColor: colors.primary }]}
                   onPress={handleActivatePlan}
                 >
-                  <Text style={styles.planActionTextPrimary}>Set as Active</Text>
+                  <Text style={[styles.planActionTextPrimary, { color: colors.buttonText }]}>Set as Active</Text>
                 </TouchableOpacity>
               )}
 
               <TouchableOpacity
-                style={[styles.planActionButton, styles.planActionDanger]}
+                style={[styles.planActionButton, { backgroundColor: colors.errorLight, borderColor: colors.error }]}
                 onPress={handleDeletePlan}
               >
-                <Text style={styles.planActionTextDanger}>Delete Plan</Text>
+                <Text style={[styles.planActionTextDanger, { color: colors.error }]}>Delete Plan</Text>
               </TouchableOpacity>
             </View>
 
             <Pressable
-              style={styles.cancelButton}
+              style={[styles.cancelButton, { borderColor: colors.border }]}
               onPress={() => {
                 setShowPlanModal(false);
                 setSelectedPlan(null);
               }}
             >
-              <Text style={styles.cancelButtonText}>Cancel</Text>
+              <Text style={[styles.cancelButtonText, { color: colors.text }]}>Cancel</Text>
             </Pressable>
           </View>
         </View>
@@ -404,7 +405,6 @@ export default function TemplatesScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
   },
   scrollContent: {
     padding: 20,
@@ -415,22 +415,15 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#333',
     marginBottom: 12,
   },
-  // My Plans styles
   planCard: {
     padding: 16,
     marginBottom: 12,
-    backgroundColor: '#f5f5f5',
     borderRadius: 8,
     borderWidth: 2,
-    borderColor: '#e0e0e0',
   },
-  planCardActive: {
-    backgroundColor: '#e8f5e9',
-    borderColor: '#4caf50',
-  },
+  planCardActive: {},
   planCardContent: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -443,87 +436,67 @@ const styles = StyleSheet.create({
   planCardTitle: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#333',
     marginBottom: 4,
   },
   planCardMeta: {
     fontSize: 12,
-    color: '#666',
   },
   activeBadge: {
-    backgroundColor: '#4caf50',
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 4,
   },
   activeBadgeText: {
-    color: '#fff',
     fontSize: 10,
     fontWeight: 'bold',
   },
   progressBar: {
     height: 4,
-    backgroundColor: '#e0e0e0',
     borderRadius: 2,
     overflow: 'hidden',
   },
   progressFill: {
     height: '100%',
-    backgroundColor: '#4caf50',
     borderRadius: 2,
   },
-  // Plan actions modal styles
   planActions: {
     width: '100%',
     marginBottom: 16,
   },
   planActionButton: {
-    backgroundColor: '#f0f0f0',
     padding: 14,
     borderRadius: 8,
     alignItems: 'center',
     marginBottom: 8,
+    borderWidth: 1,
   },
-  planActionPrimary: {
-    backgroundColor: '#e3f2fd',
-  },
-  planActionWarning: {
-    backgroundColor: '#fff3e0',
-  },
-  planActionDanger: {
-    backgroundColor: '#ffebee',
-  },
+  planActionPrimary: {},
+  planActionWarning: {},
+  planActionDanger: {},
   planActionText: {
     fontSize: 16,
-    color: '#333',
     fontWeight: '600',
   },
   planActionTextPrimary: {
     fontSize: 16,
-    color: '#2196f3',
     fontWeight: '600',
   },
   planActionTextWarning: {
     fontSize: 16,
-    color: '#ff9800',
     fontWeight: '600',
   },
   planActionTextDanger: {
     fontSize: 16,
-    color: '#f44336',
     fontWeight: '600',
   },
-  // Template card styles
   list: {
     padding: 20,
   },
   card: {
     padding: 16,
     marginBottom: 12,
-    backgroundColor: '#f5f5f5',
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#e0e0e0',
   },
   cardHeader: {
     flexDirection: 'row',
@@ -537,16 +510,13 @@ const styles = StyleSheet.create({
   },
   cardDescription: {
     fontSize: 14,
-    color: '#666',
   },
   badge: {
-    backgroundColor: '#ff9800',
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 4,
   },
   badgeText: {
-    color: '#fff',
     fontSize: 10,
     fontWeight: 'bold',
   },
@@ -561,7 +531,6 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   modalContent: {
-    backgroundColor: '#fff',
     borderRadius: 12,
     padding: 24,
     width: '100%',
@@ -575,7 +544,6 @@ const styles = StyleSheet.create({
   },
   modalSubtitle: {
     fontSize: 14,
-    color: '#666',
     marginBottom: 24,
   },
   durationOptions: {
@@ -587,7 +555,6 @@ const styles = StyleSheet.create({
   durationButton: {
     flex: 1,
     marginHorizontal: 6,
-    backgroundColor: '#f0f0f0',
     borderRadius: 8,
     paddingVertical: 16,
     alignItems: 'center',
@@ -595,19 +562,18 @@ const styles = StyleSheet.create({
   durationWeeks: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#333',
   },
   durationLabel: {
     fontSize: 12,
-    color: '#666',
     marginTop: 4,
   },
   cancelButton: {
     paddingVertical: 12,
     paddingHorizontal: 24,
+    borderWidth: 1,
+    borderRadius: 8,
   },
   cancelButtonText: {
     fontSize: 16,
-    color: '#666',
   },
 });

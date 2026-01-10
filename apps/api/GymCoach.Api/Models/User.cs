@@ -4,10 +4,19 @@ public class User
 {
     public int Id { get; set; }
     public required string Email { get; set; }
-    public required string PasswordHash { get; set; }
+
+    // Social auth identifiers
+    public string? GoogleId { get; set; }
+    public string? AppleId { get; set; }
+
+    // Optional for social-only auth
+    public string? PasswordHash { get; set; }
+
     public string? DisplayName { get; set; }
+    public string? ProfilePictureUrl { get; set; }
     public SubscriptionStatus SubscriptionStatus { get; set; } = SubscriptionStatus.Free;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime? LastLoginAt { get; set; }
 
     // Navigation
     public ICollection<UserEquipment> OwnedEquipment { get; set; } = [];

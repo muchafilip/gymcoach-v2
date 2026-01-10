@@ -11,15 +11,16 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { useUserStore } from '../store/userStore';
+import { useThemeStore } from '../store/themeStore';
 import { Equipment } from '../types';
 import { fetchEquipment, saveUserEquipment } from '../api/equipment';
-import { MOCK_USER_ID } from '../utils/constants';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'Onboarding'>;
 
 export default function OnboardingScreen() {
   const navigation = useNavigation<NavigationProp>();
   const { selectedEquipment, setEquipment } = useUserStore();
+  const { colors } = useThemeStore();
   const [equipment, setEquipmentList] = React.useState<Equipment[]>([]);
   const [loading, setLoading] = React.useState(true);
 
@@ -53,7 +54,7 @@ export default function OnboardingScreen() {
     }
 
     try {
-      await saveUserEquipment(MOCK_USER_ID, selectedEquipment);
+      await saveUserEquipment(selectedEquipment);
       console.log('Equipment saved successfully');
       navigation.replace('MainTabs');
     } catch (error) {
@@ -64,17 +65,17 @@ export default function OnboardingScreen() {
 
   if (loading === true) {
     return (
-      <SafeAreaView style={styles.container}>
-        <Text>Loading...</Text>
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+        <Text style={{ color: colors.text }}>Loading...</Text>
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={styles.header}>
-        <Text style={styles.title}>Welcome to GymCoach</Text>
-        <Text style={styles.subtitle}>
+        <Text style={[styles.title, { color: colors.text }]}>Welcome to GymCoach</Text>
+        <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
           Select the equipment you have access to
         </Text>
       </View>
@@ -86,11 +87,15 @@ export default function OnboardingScreen() {
           const isSelected = selectedEquipment.includes(item.id);
           return (
             <TouchableOpacity
-              style={[styles.card, isSelected === true && styles.cardSelected]}
+              style={[
+                styles.card,
+                { backgroundColor: colors.surface },
+                isSelected && { backgroundColor: colors.primaryLight, borderColor: colors.primary }
+              ]}
               onPress={() => toggleEquipment(item.id)}
             >
-              <Text style={styles.cardText}>{item.name}</Text>
-              {isSelected === true ? <Text style={styles.checkmark}>✓</Text> : null}
+              <Text style={[styles.cardText, { color: colors.text }]}>{item.name}</Text>
+              {isSelected ? <Text style={[styles.checkmark, { color: colors.primary }]}>✓</Text> : null}
             </TouchableOpacity>
           );
         }}
@@ -101,12 +106,13 @@ export default function OnboardingScreen() {
         <TouchableOpacity
           style={[
             styles.button,
+            { backgroundColor: colors.primary },
             selectedEquipment.length === 0 && styles.buttonDisabled,
           ]}
           onPress={handleContinue}
-          disabled={selectedEquipment.length === 0 ? true : false}
+          disabled={selectedEquipment.length === 0}
         >
-          <Text style={styles.buttonText}>Continue</Text>
+          <Text style={[styles.buttonText, { color: colors.buttonText }]}>Continue</Text>
         </TouchableOpacity>
       </View>
     </SafeAreaView>
@@ -116,7 +122,6 @@ export default function OnboardingScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
   },
   header: {
     padding: 20,
@@ -129,7 +134,6 @@ const styles = StyleSheet.create({
   },
   subtitle: {
     fontSize: 16,
-    color: '#666',
   },
   list: {
     padding: 20,
@@ -140,37 +144,30 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 16,
     marginBottom: 12,
-    backgroundColor: '#f5f5f5',
     borderRadius: 8,
     borderWidth: 2,
     borderColor: 'transparent',
   },
-  cardSelected: {
-    backgroundColor: '#e3f2fd',
-    borderColor: '#2196f3',
-  },
+  cardSelected: {},
   cardText: {
     fontSize: 16,
     fontWeight: '500',
   },
   checkmark: {
     fontSize: 20,
-    color: '#2196f3',
   },
   footer: {
     padding: 20,
   },
   button: {
-    backgroundColor: '#2196f3',
     padding: 16,
     borderRadius: 8,
     alignItems: 'center',
   },
   buttonDisabled: {
-    backgroundColor: '#ccc',
+    opacity: 0.5,
   },
   buttonText: {
-    color: '#fff',
     fontSize: 16,
     fontWeight: 'bold',
   },

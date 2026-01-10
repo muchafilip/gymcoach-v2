@@ -6,11 +6,11 @@ export const fetchEquipment = async (): Promise<Equipment[]> => {
   return response.data;
 };
 
-export const getUserEquipment = async (userId: number): Promise<number[]> => {
-  const response = await apiClient.get<number[]>(`/equipment/user/${userId}`);
+export const getUserEquipment = async (): Promise<number[]> => {
+  const response = await apiClient.get<number[]>('/equipment/me');
   return response.data;
 };
 
-export const saveUserEquipment = async (userId: number, equipmentIds: number[]): Promise<void> => {
-  await apiClient.put(`/equipment/user/${userId}`, { equipmentIds });
+export const saveUserEquipment = async (equipmentIds: number[]): Promise<void> => {
+  await apiClient.put('/equipment/me', { equipmentIds });
 };
