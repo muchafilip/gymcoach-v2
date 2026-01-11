@@ -12,10 +12,13 @@ public class GymCoachDbContext : DbContext
     public DbSet<MuscleGroup> MuscleGroups => Set<MuscleGroup>();
     public DbSet<Exercise> Exercises => Set<Exercise>();
     public DbSet<ProgressionRule> ProgressionRules => Set<ProgressionRule>();
+    public DbSet<RepScheme> RepSchemes => Set<RepScheme>();
 
     // Templates
     public DbSet<WorkoutTemplate> WorkoutTemplates => Set<WorkoutTemplate>();
     public DbSet<WorkoutDayTemplate> WorkoutDayTemplates => Set<WorkoutDayTemplate>();
+    public DbSet<CustomTemplateExercise> CustomTemplateExercises => Set<CustomTemplateExercise>();
+    public DbSet<SupersetTemplate> SupersetTemplates => Set<SupersetTemplate>();
 
     // User data
     public DbSet<User> Users => Set<User>();
@@ -23,6 +26,8 @@ public class GymCoachDbContext : DbContext
     public DbSet<UserWorkoutDay> UserWorkoutDays => Set<UserWorkoutDay>();
     public DbSet<UserExerciseLog> UserExerciseLogs => Set<UserExerciseLog>();
     public DbSet<ExerciseSet> ExerciseSets => Set<ExerciseSet>();
+    public DbSet<UserSuperset> UserSupersets => Set<UserSuperset>();
+    public DbSet<PersonalRecord> PersonalRecords => Set<PersonalRecord>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -93,6 +98,92 @@ public class GymCoachDbContext : DbContext
 
         modelBuilder.Entity<ProgressionRule>()
             .Property(p => p.WeightIncrement)
+            .HasPrecision(10, 2);
+
+        // RepScheme -> User (for custom schemes)
+        modelBuilder.Entity<RepScheme>()
+            .HasOne(r => r.User)
+            .WithMany()
+            .HasForeignKey(r => r.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // SupersetTemplate -> MuscleGroups
+        modelBuilder.Entity<SupersetTemplate>()
+            .HasOne(s => s.MuscleGroupA)
+            .WithMany()
+            .HasForeignKey(s => s.MuscleGroupAId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<SupersetTemplate>()
+            .HasOne(s => s.MuscleGroupB)
+            .WithMany()
+            .HasForeignKey(s => s.MuscleGroupBId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // UserSuperset -> UserExerciseLogs
+        modelBuilder.Entity<UserSuperset>()
+            .HasOne(s => s.ExerciseLogA)
+            .WithMany()
+            .HasForeignKey(s => s.ExerciseLogAId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<UserSuperset>()
+            .HasOne(s => s.ExerciseLogB)
+            .WithMany()
+            .HasForeignKey(s => s.ExerciseLogBId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // ExerciseSet -> RepScheme
+        modelBuilder.Entity<ExerciseSet>()
+            .HasOne(s => s.RepScheme)
+            .WithMany()
+            .HasForeignKey(s => s.RepSchemeId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        // PersonalRecord configuration
+        modelBuilder.Entity<PersonalRecord>()
+            .HasIndex(pr => new { pr.UserId, pr.ExerciseId })
+            .IsUnique();
+
+        modelBuilder.Entity<PersonalRecord>()
+            .Property(pr => pr.MaxWeight)
+            .HasPrecision(10, 2);
+
+        modelBuilder.Entity<PersonalRecord>()
+            .Property(pr => pr.BestSetWeight)
+            .HasPrecision(10, 2);
+
+        modelBuilder.Entity<PersonalRecord>()
+            .HasOne(pr => pr.Exercise)
+            .WithMany()
+            .HasForeignKey(pr => pr.ExerciseId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // WorkoutTemplate -> User (for custom templates)
+        modelBuilder.Entity<WorkoutTemplate>()
+            .HasOne(t => t.User)
+            .WithMany()
+            .HasForeignKey(t => t.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<WorkoutTemplate>()
+            .HasIndex(t => t.UserId);
+
+        // CustomTemplateExercise configuration
+        modelBuilder.Entity<CustomTemplateExercise>()
+            .HasOne(e => e.WorkoutDayTemplate)
+            .WithMany(d => d.Exercises)
+            .HasForeignKey(e => e.WorkoutDayTemplateId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<CustomTemplateExercise>()
+            .HasOne(e => e.Exercise)
+            .WithMany()
+            .HasForeignKey(e => e.ExerciseId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<CustomTemplateExercise>()
+            .Property(e => e.DefaultWeight)
             .HasPrecision(10, 2);
 
         // Seed data

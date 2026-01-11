@@ -38,6 +38,9 @@ builder.Services.AddAuthorization();
 // Add custom services
 builder.Services.AddScoped<ProgressionService>();
 builder.Services.AddScoped<WorkoutGeneratorService>();
+builder.Services.AddScoped<RepSchemeService>();
+builder.Services.AddScoped<SupersetService>();
+builder.Services.AddScoped<PersonalRecordService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddHttpClient();
 

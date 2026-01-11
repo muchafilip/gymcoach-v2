@@ -1,5 +1,5 @@
 import { apiClient } from './client';
-import { ExerciseAlternative, HomeData, UserWorkoutDay } from '../types';
+import { ExerciseAlternative, ExerciseSet, HomeData, UserExercise, UserWorkoutDay } from '../types';
 import { cachedFetch, offlineWrite, invalidateCache } from './offlineSupport';
 import { getDatabase } from '../db/init';
 
@@ -177,6 +177,47 @@ export const substituteExercise = async (
     `/workouts/exercises/${exerciseLogId}/substitute/${newExerciseId}`
   );
   return response.data;
+};
+
+export const addSet = async (exerciseLogId: number): Promise<ExerciseSet> => {
+  const response = await apiClient.post(`/workouts/exercises/${exerciseLogId}/sets`);
+  return response.data;
+};
+
+export const deleteSet = async (setId: number): Promise<void> => {
+  await apiClient.delete(`/workouts/sets/${setId}`);
+};
+
+export const addExerciseToDay = async (
+  dayId: number,
+  exerciseId: number,
+  sets: number = 3,
+  targetReps: number = 10
+): Promise<UserExercise> => {
+  const response = await apiClient.post(`/workouts/days/${dayId}/exercises`, {
+    exerciseId,
+    sets,
+    targetReps,
+  });
+  return response.data;
+};
+
+export const deleteExercise = async (exerciseLogId: number): Promise<void> => {
+  await apiClient.delete(`/workouts/exercises/${exerciseLogId}`);
+};
+
+export interface ExerciseListItem {
+  id: number;
+  name: string;
+  primaryMuscleGroup: string;
+  exerciseType: string;
+}
+
+export const getAllExercises = async (): Promise<ExerciseListItem[]> => {
+  return cachedFetch('all-exercises', async () => {
+    const response = await apiClient.get('/workouts/exercises');
+    return response.data;
+  });
 };
 
 // ============================================

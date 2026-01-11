@@ -19,6 +19,11 @@ import { useThemeStore } from '../store/themeStore';
 type NavigationProp = NativeStackNavigationProp<TemplatesStackParamList, 'WorkoutPlan'>;
 type RouteParams = RouteProp<TemplatesStackParamList, 'WorkoutPlan'>;
 
+interface ExerciseInfo {
+  id: number;
+  exerciseName: string;
+}
+
 interface WorkoutDay {
   id: number;
   dayNumber: number;
@@ -26,6 +31,7 @@ interface WorkoutDay {
   name: string;
   completedAt: string | null;
   exerciseCount: number;
+  exercises: ExerciseInfo[];
 }
 
 interface PlanDetail {
@@ -74,6 +80,10 @@ export default function WorkoutPlanScreen() {
           name: d.name,
           completedAt: d.completedAt,
           exerciseCount: d.exercises?.length || 0,
+          exercises: (d.exercises || []).map((e: any) => ({
+            id: e.id,
+            exerciseName: e.exerciseName,
+          })),
         })),
       };
 
@@ -165,15 +175,30 @@ export default function WorkoutPlanScreen() {
                 onPress={() => handleDayPress(day.id)}
                 disabled={day.exerciseCount === 0}
               >
-                <Text style={[styles.dayCardName, { color: colors.text }]}>{day.name}</Text>
-                {day.completedAt !== null ? (
-                  <Text style={[styles.dayCardCheck, { color: colors.success }]}>✓</Text>
-                ) : day.exerciseCount > 0 ? (
-                  <Text style={[styles.dayCardExercises, { color: colors.textSecondary }]}>
-                    {day.exerciseCount} ex
-                  </Text>
+                <View style={styles.dayCardHeader}>
+                  <Text style={[styles.dayCardName, { color: colors.text }]} numberOfLines={1}>{day.name}</Text>
+                  {day.completedAt !== null && (
+                    <Text style={[styles.dayCardCheck, { color: colors.success }]}>✓</Text>
+                  )}
+                </View>
+                {day.exercises.length > 0 ? (
+                  <ScrollView
+                    style={styles.exerciseList}
+                    nestedScrollEnabled
+                    showsVerticalScrollIndicator={false}
+                  >
+                    {day.exercises.map((exercise, idx) => (
+                      <Text
+                        key={exercise.id}
+                        style={[styles.exerciseListItem, { color: colors.textSecondary }]}
+                        numberOfLines={1}
+                      >
+                        {idx + 1}. {exercise.exerciseName}
+                      </Text>
+                    ))}
+                  </ScrollView>
                 ) : (
-                  <Text style={[styles.dayCardPending, { color: colors.textMuted }]}>...</Text>
+                  <Text style={[styles.dayCardPending, { color: colors.textMuted }]}>Not generated</Text>
                 )}
               </TouchableOpacity>
             ))}
@@ -372,31 +397,47 @@ const styles = StyleSheet.create({
   },
   dayCard: {
     width: '31%',
-    aspectRatio: 1,
+    minHeight: 140,
     borderRadius: 8,
     borderWidth: 2,
     padding: 10,
-    justifyContent: 'space-between',
   },
   dayCardCompleted: {},
   dayCardEmpty: {
     opacity: 0.5,
   },
+  dayCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
   dayCardName: {
     fontSize: 12,
     fontWeight: '600',
+    flex: 1,
   },
   dayCardCheck: {
-    fontSize: 20,
-    alignSelf: 'flex-end',
+    fontSize: 14,
+    marginLeft: 4,
+  },
+  exerciseList: {
+    flex: 1,
+    maxHeight: 90,
+  },
+  exerciseListItem: {
+    fontSize: 10,
+    lineHeight: 14,
+    marginBottom: 2,
   },
   dayCardExercises: {
     fontSize: 11,
     alignSelf: 'flex-end',
   },
   dayCardPending: {
-    fontSize: 14,
-    alignSelf: 'flex-end',
+    fontSize: 11,
+    marginTop: 8,
+    textAlign: 'center',
   },
   list: {
     padding: 20,

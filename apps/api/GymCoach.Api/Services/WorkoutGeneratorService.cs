@@ -20,19 +20,6 @@ public class WorkoutGeneratorService
     /// </summary>
     public async Task<UserWorkoutPlan> GenerateWorkoutPlan(int userId, int templateId, int durationWeeks = 4)
     {
-        // Check for existing active plan with same template
-        var existingPlan = await _context.UserWorkoutPlans
-            .Include(p => p.WorkoutDays)
-            .FirstOrDefaultAsync(p => p.UserId == userId
-                && p.WorkoutTemplateId == templateId
-                && p.IsActive);
-
-        if (existingPlan != null)
-        {
-            Console.WriteLine($"[Generate] Returning existing plan {existingPlan.Id} with {existingPlan.WorkoutDays.Count} days");
-            return existingPlan; // Return existing plan to prevent data loss
-        }
-
         Console.WriteLine($"[Generate] Creating new plan with {durationWeeks} weeks");
 
         // Deactivate any other active plans for this user
@@ -100,7 +87,7 @@ public class WorkoutGeneratorService
                 // Later weeks are placeholders - exercises generated after prior week completion
                 if (week == 1)
                 {
-                    await GenerateExercisesForDay(workoutDay.Id, dayTemplate, userId, userEquipmentIds, null);
+                    await GenerateExercisesForDay(workoutDay.Id, dayTemplate, userId, userEquipmentIds, null, template.HasSupersets);
                 }
             }
         }
@@ -117,9 +104,81 @@ public class WorkoutGeneratorService
         WorkoutDayTemplate dayTemplate,
         int userId,
         List<int> userEquipmentIds,
+        int? dayTypeIdForProgression,
+        bool createSupersets = false)
+    {
+        // Check if this is a custom template with pre-defined exercises
+        var customExercises = await _context.CustomTemplateExercises
+            .Include(e => e.Exercise)
+            .Where(e => e.WorkoutDayTemplateId == dayTemplate.Id)
+            .OrderBy(e => e.OrderIndex)
+            .ToListAsync();
+
+        if (customExercises.Any())
+        {
+            // Use custom template exercises directly
+            await GenerateFromCustomTemplate(workoutDayId, customExercises, userId, dayTypeIdForProgression);
+        }
+        else
+        {
+            // Use random selection based on target muscles (system templates)
+            await GenerateFromSystemTemplate(workoutDayId, dayTemplate, userId, userEquipmentIds, dayTypeIdForProgression, createSupersets);
+        }
+    }
+
+    /// <summary>
+    /// Generates exercises from a custom template with pre-defined exercises
+    /// </summary>
+    private async Task GenerateFromCustomTemplate(
+        int workoutDayId,
+        List<CustomTemplateExercise> customExercises,
+        int userId,
         int? dayTypeIdForProgression)
     {
+        foreach (var customEx in customExercises)
+        {
+            var exerciseLog = new UserExerciseLog
+            {
+                UserWorkoutDayId = workoutDayId,
+                ExerciseId = customEx.ExerciseId,
+                OrderIndex = customEx.OrderIndex
+            };
+
+            _context.UserExerciseLogs.Add(exerciseLog);
+            await _context.SaveChangesAsync();
+
+            // Use custom template settings for sets
+            for (int setNum = 1; setNum <= customEx.Sets; setNum++)
+            {
+                var set = new ExerciseSet
+                {
+                    UserExerciseLogId = exerciseLog.Id,
+                    SetNumber = setNum,
+                    TargetReps = customEx.TargetReps,
+                    Weight = customEx.DefaultWeight,
+                    Completed = false
+                };
+                _context.ExerciseSets.Add(set);
+            }
+        }
+        await _context.SaveChangesAsync();
+    }
+
+    /// <summary>
+    /// Generates exercises from a system template using random selection based on target muscles
+    /// </summary>
+    private async Task GenerateFromSystemTemplate(
+        int workoutDayId,
+        WorkoutDayTemplate dayTemplate,
+        int userId,
+        List<int> userEquipmentIds,
+        int? dayTypeIdForProgression,
+        bool createSupersets)
+    {
         int orderIndex = 0;
+        // Track generated exercises by muscle group for superset pairing
+        var exercisesByMuscle = new Dictionary<int, List<int>>(); // MuscleGroupId -> List of ExerciseLogIds
+
         foreach (var targetMuscle in dayTemplate.TargetMuscles)
         {
             var availableExercises = await _context.Exercises
@@ -149,6 +208,11 @@ public class WorkoutGeneratorService
                 selectedExercises.AddRange(secondaryExercises);
             }
 
+            if (!exercisesByMuscle.ContainsKey(targetMuscle.MuscleGroupId))
+            {
+                exercisesByMuscle[targetMuscle.MuscleGroupId] = [];
+            }
+
             foreach (var exercise in selectedExercises)
             {
                 var exerciseLog = new UserExerciseLog
@@ -160,6 +224,8 @@ public class WorkoutGeneratorService
 
                 _context.UserExerciseLogs.Add(exerciseLog);
                 await _context.SaveChangesAsync();
+
+                exercisesByMuscle[targetMuscle.MuscleGroupId].Add(exerciseLog.Id);
 
                 // Get progression target - use dayTypeId for same-day progression
                 var target = await _progressionService.CalculateNextTarget(userId, exercise.Id, dayTypeIdForProgression);
@@ -179,10 +245,74 @@ public class WorkoutGeneratorService
             }
         }
         await _context.SaveChangesAsync();
+
+        // Create supersets if template requires it
+        if (createSupersets)
+        {
+            await CreateSupersetsForDay(workoutDayId, exercisesByMuscle);
+        }
     }
 
     /// <summary>
-    /// Generates exercises for all days in the next week based on previous week's performance
+    /// Creates supersets by pairing exercises from antagonist muscle groups
+    /// </summary>
+    private async Task CreateSupersetsForDay(int workoutDayId, Dictionary<int, List<int>> exercisesByMuscle)
+    {
+        // Antagonist muscle group pairs
+        var antagonistPairs = new List<(int muscleA, int muscleB)>
+        {
+            (1, 2),   // Chest + Back
+            (4, 5),   // Biceps + Triceps
+            (6, 7),   // Quads + Hamstrings
+            (3, 2),   // Shoulders + Back
+        };
+
+        var maxGroupId = await _context.UserExerciseLogs
+            .Where(el => el.SupersetGroupId != null)
+            .MaxAsync(el => (int?)el.SupersetGroupId) ?? 0;
+
+        foreach (var (muscleA, muscleB) in antagonistPairs)
+        {
+            if (!exercisesByMuscle.ContainsKey(muscleA) || !exercisesByMuscle.ContainsKey(muscleB))
+                continue;
+
+            var exercisesA = exercisesByMuscle[muscleA];
+            var exercisesB = exercisesByMuscle[muscleB];
+
+            // Pair up exercises from each muscle group
+            var pairCount = Math.Min(exercisesA.Count, exercisesB.Count);
+            for (int i = 0; i < pairCount; i++)
+            {
+                maxGroupId++;
+                var groupId = maxGroupId;
+
+                var logA = await _context.UserExerciseLogs.FindAsync(exercisesA[i]);
+                var logB = await _context.UserExerciseLogs.FindAsync(exercisesB[i]);
+
+                if (logA != null && logB != null)
+                {
+                    logA.SupersetGroupId = groupId;
+                    logA.SupersetOrder = 1;
+                    logB.SupersetGroupId = groupId;
+                    logB.SupersetOrder = 2;
+
+                    // Create superset record
+                    var superset = new UserSuperset
+                    {
+                        ExerciseLogAId = exercisesA[i],
+                        ExerciseLogBId = exercisesB[i],
+                        IsManual = false
+                    };
+                    _context.UserSupersets.Add(superset);
+                }
+            }
+        }
+
+        await _context.SaveChangesAsync();
+    }
+
+    /// <summary>
+    /// Generates exercises for all days in the next week by copying from previous week
     /// </summary>
     public async Task<bool> GenerateNextWeekWorkouts(int planId, int weekNumber)
     {
@@ -195,19 +325,20 @@ public class WorkoutGeneratorService
 
         if (plan == null) return false;
 
-        // Get user's equipment
-        var userEquipmentIds = await _context.Set<UserEquipment>()
-            .Where(ue => ue.UserId == plan.UserId)
-            .Select(ue => ue.EquipmentId)
-            .ToListAsync();
-
-        if (!userEquipmentIds.Contains(1))
-            userEquipmentIds.Add(1);
-
-        // Get all placeholder days for this week (no exercises yet)
+        // Get all days for this week (no exercises yet)
         var weekDays = plan.WorkoutDays
             .Where(d => d.WeekNumber == weekNumber)
             .ToList();
+
+        // Get previous week's days for copying
+        var previousWeekNumber = weekNumber - 1;
+        var previousWeekDays = await _context.UserWorkoutDays
+            .Include(d => d.ExerciseLogs)
+                .ThenInclude(el => el.Exercise)
+            .Include(d => d.ExerciseLogs)
+                .ThenInclude(el => el.Sets)
+            .Where(d => d.UserWorkoutPlanId == planId && d.WeekNumber == previousWeekNumber)
+            .ToListAsync();
 
         foreach (var day in weekDays)
         {
@@ -217,16 +348,123 @@ public class WorkoutGeneratorService
 
             if (existingExercises) continue; // Skip if already generated
 
-            var dayTemplate = plan.WorkoutTemplate.DayTemplates
-                .FirstOrDefault(dt => dt.Id == day.DayTypeId);
+            // Find the corresponding day from previous week (same DayTypeId)
+            var previousDay = previousWeekDays.FirstOrDefault(d => d.DayTypeId == day.DayTypeId);
 
-            if (dayTemplate == null) continue;
+            if (previousDay != null && previousDay.ExerciseLogs.Any())
+            {
+                // Copy exercises from previous week
+                await CopyExercisesFromPreviousDay(day.Id, previousDay, plan.UserId, plan.WorkoutTemplate.HasSupersets);
+            }
+            else
+            {
+                // Fallback: generate from template (shouldn't happen normally)
+                var dayTemplate = plan.WorkoutTemplate.DayTemplates
+                    .FirstOrDefault(dt => dt.Id == day.DayTypeId);
 
-            // Generate exercises with progression based on same dayTypeId
-            await GenerateExercisesForDay(day.Id, dayTemplate, plan.UserId, userEquipmentIds, day.DayTypeId);
+                if (dayTemplate != null)
+                {
+                    var userEquipmentIds = await _context.Set<UserEquipment>()
+                        .Where(ue => ue.UserId == plan.UserId)
+                        .Select(ue => ue.EquipmentId)
+                        .ToListAsync();
+
+                    if (!userEquipmentIds.Contains(1))
+                        userEquipmentIds.Add(1);
+
+                    await GenerateExercisesForDay(day.Id, dayTemplate, plan.UserId, userEquipmentIds, day.DayTypeId, plan.WorkoutTemplate.HasSupersets);
+                }
+            }
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// Copies exercises from a previous day, keeping same exercises and pre-filling weights.
+    /// Implements progressive overload: if all sets hit target reps, increase target reps by 1.
+    /// </summary>
+    private async Task CopyExercisesFromPreviousDay(int newDayId, UserWorkoutDay previousDay, int userId, bool createSupersets)
+    {
+        const int MAX_TARGET_REPS = 15; // Cap progression at 15 reps
+
+        var exercisesByMuscle = new Dictionary<int, List<int>>();
+        var supersetMapping = new Dictionary<int, int>(); // old SupersetGroupId -> new SupersetGroupId
+
+        // Get max superset group ID for creating new ones
+        var maxGroupId = await _context.UserExerciseLogs
+            .Where(el => el.SupersetGroupId != null)
+            .MaxAsync(el => (int?)el.SupersetGroupId) ?? 0;
+
+        foreach (var previousLog in previousDay.ExerciseLogs.OrderBy(el => el.OrderIndex))
+        {
+            // Create new exercise log with same exercise
+            var exerciseLog = new UserExerciseLog
+            {
+                UserWorkoutDayId = newDayId,
+                ExerciseId = previousLog.ExerciseId,
+                OrderIndex = previousLog.OrderIndex
+            };
+
+            // Handle superset grouping
+            if (previousLog.SupersetGroupId.HasValue)
+            {
+                if (!supersetMapping.ContainsKey(previousLog.SupersetGroupId.Value))
+                {
+                    maxGroupId++;
+                    supersetMapping[previousLog.SupersetGroupId.Value] = maxGroupId;
+                }
+                exerciseLog.SupersetGroupId = supersetMapping[previousLog.SupersetGroupId.Value];
+                exerciseLog.SupersetOrder = previousLog.SupersetOrder;
+            }
+
+            _context.UserExerciseLogs.Add(exerciseLog);
+            await _context.SaveChangesAsync();
+
+            // Track for potential superset creation
+            var muscleGroupId = previousLog.Exercise.PrimaryMuscleGroupId;
+            if (!exercisesByMuscle.ContainsKey(muscleGroupId))
+            {
+                exercisesByMuscle[muscleGroupId] = [];
+            }
+            exercisesByMuscle[muscleGroupId].Add(exerciseLog.Id);
+
+            // Get last completed weight for this exercise from previous week
+            var completedSets = previousLog.Sets.Where(s => s.Completed).ToList();
+            var lastWeight = completedSets
+                .Where(s => s.Weight.HasValue)
+                .OrderByDescending(s => s.SetNumber)
+                .FirstOrDefault()?.Weight;
+
+            // Check if user hit all target reps for progressive overload
+            // All sets must be completed and actual reps >= target reps
+            var shouldProgressReps = completedSets.Count > 0 &&
+                completedSets.Count == previousLog.Sets.Count &&
+                completedSets.All(s => s.ActualReps.HasValue && s.ActualReps >= s.TargetReps);
+
+            // Copy sets with progressive target reps
+            foreach (var previousSet in previousLog.Sets.OrderBy(s => s.SetNumber))
+            {
+                // Calculate new target reps: increase by 1 if all sets were hit, otherwise keep same
+                var newTargetReps = previousSet.TargetReps;
+                if (shouldProgressReps && newTargetReps < MAX_TARGET_REPS)
+                {
+                    newTargetReps = previousSet.TargetReps + 1;
+                }
+
+                var set = new ExerciseSet
+                {
+                    UserExerciseLogId = exerciseLog.Id,
+                    SetNumber = previousSet.SetNumber,
+                    TargetReps = newTargetReps,
+                    Weight = lastWeight ?? previousSet.Weight, // Use last week's weight
+                    Completed = false
+                };
+                _context.ExerciseSets.Add(set);
+            }
+        }
+
+        await _context.SaveChangesAsync();
     }
 
     /// <summary>

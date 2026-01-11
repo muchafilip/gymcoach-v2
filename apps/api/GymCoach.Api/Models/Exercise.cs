@@ -8,6 +8,10 @@ public class Exercise
     public string? Instructions { get; set; }
     public string? VideoUrl { get; set; }
 
+    // Exercise classification
+    public ExerciseType Type { get; set; } = ExerciseType.Compound;
+    public ExerciseRole DefaultRole { get; set; } = ExerciseRole.Accessory;
+
     // Primary muscle group
     public int PrimaryMuscleGroupId { get; set; }
     public MuscleGroup PrimaryMuscleGroup { get; set; } = null!;

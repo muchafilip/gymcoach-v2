@@ -16,15 +16,18 @@ public class WorkoutsController : ControllerBase
     private readonly GymCoachDbContext _context;
     private readonly WorkoutGeneratorService _generator;
     private readonly ProgressionService _progression;
+    private readonly PersonalRecordService _prService;
 
     public WorkoutsController(
         GymCoachDbContext context,
         WorkoutGeneratorService generator,
-        ProgressionService progression)
+        ProgressionService progression,
+        PersonalRecordService prService)
     {
         _context = context;
         _generator = generator;
         _progression = progression;
+        _prService = prService;
     }
 
     /// <summary>
@@ -109,12 +112,29 @@ public class WorkoutsController : ControllerBase
             })
             .ToListAsync();
 
+        // Top personal records (by max weight, limit to 5)
+        var topPRs = await _context.PersonalRecords
+            .Include(pr => pr.Exercise)
+            .Where(pr => pr.UserId == userId)
+            .OrderByDescending(pr => pr.MaxWeight)
+            .Take(5)
+            .Select(pr => new PersonalRecordDto
+            {
+                ExerciseId = pr.ExerciseId,
+                ExerciseName = pr.Exercise.Name,
+                MaxWeight = pr.MaxWeight,
+                BestSetReps = pr.BestSetReps,
+                BestSetWeight = pr.BestSetWeight
+            })
+            .ToListAsync();
+
         return new HomeDataDto
         {
             TotalWeightLifted = totalWeight,
             WorkoutsCompleted = completedDays,
             NextWorkout = nextWorkout,
-            RecentWorkouts = recentWorkouts
+            RecentWorkouts = recentWorkouts,
+            PersonalRecords = topPRs
         };
     }
 
@@ -252,6 +272,7 @@ public class WorkoutsController : ControllerBase
             .Include(p => p.WorkoutDays)
                 .ThenInclude(d => d.ExerciseLogs)
                     .ThenInclude(el => el.Exercise)
+                        .ThenInclude(e => e.PrimaryMuscleGroup)
             .Include(p => p.WorkoutDays)
                 .ThenInclude(d => d.ExerciseLogs)
                     .ThenInclude(el => el.Sets)
@@ -283,6 +304,7 @@ public class WorkoutsController : ControllerBase
                     .Include(d => d.WorkoutDayTemplate)
                     .Include(d => d.ExerciseLogs)
                         .ThenInclude(el => el.Exercise)
+                            .ThenInclude(e => e.PrimaryMuscleGroup)
                     .Include(d => d.ExerciseLogs)
                         .ThenInclude(el => el.Sets)
                     .FirstOrDefaultAsync(d => d.Id == nextIncomplete.Id);
@@ -315,6 +337,7 @@ public class WorkoutsController : ControllerBase
             .Include(p => p.WorkoutDays)
                 .ThenInclude(d => d.ExerciseLogs)
                     .ThenInclude(el => el.Exercise)
+                        .ThenInclude(e => e.PrimaryMuscleGroup)
             .Include(p => p.WorkoutDays)
                 .ThenInclude(d => d.ExerciseLogs)
                     .ThenInclude(el => el.Sets)
@@ -345,6 +368,7 @@ public class WorkoutsController : ControllerBase
             .Include(d => d.WorkoutDayTemplate)
             .Include(d => d.ExerciseLogs)
                 .ThenInclude(el => el.Exercise)
+                    .ThenInclude(e => e.PrimaryMuscleGroup)
             .Include(d => d.ExerciseLogs)
                 .ThenInclude(el => el.Sets)
             .FirstOrDefaultAsync(d => d.Id == dayId);
@@ -357,9 +381,13 @@ public class WorkoutsController : ControllerBase
     /// Update a set (log reps, weight, mark complete)
     /// </summary>
     [HttpPut("sets/{setId}")]
-    public async Task<IActionResult> UpdateSet(int setId, UpdateSetRequest request)
+    public async Task<ActionResult<UpdateSetResponse>> UpdateSet(int setId, UpdateSetRequest request)
     {
-        var set = await _context.ExerciseSets.FindAsync(setId);
+        var userId = this.GetUserId();
+
+        var set = await _context.ExerciseSets
+            .Include(s => s.UserExerciseLog)
+            .FirstOrDefaultAsync(s => s.Id == setId);
         if (set == null) return NotFound();
 
         if (request.ActualReps.HasValue)
@@ -370,7 +398,31 @@ public class WorkoutsController : ControllerBase
             set.Completed = request.Completed.Value;
 
         await _context.SaveChangesAsync();
-        return NoContent();
+
+        // Check for new PR when set is completed with weight and reps
+        PersonalRecordDto? newPR = null;
+        if (set.Completed && set.ActualReps.HasValue && set.Weight.HasValue && set.Weight > 0)
+        {
+            var pr = await _prService.CheckAndUpdatePR(
+                userId,
+                set.UserExerciseLog.ExerciseId,
+                set.ActualReps.Value,
+                set.Weight.Value
+            );
+
+            if (pr != null)
+            {
+                newPR = new PersonalRecordDto
+                {
+                    ExerciseId = pr.ExerciseId,
+                    MaxWeight = pr.MaxWeight,
+                    BestSetReps = pr.BestSetReps,
+                    BestSetWeight = pr.BestSetWeight
+                };
+            }
+        }
+
+        return new UpdateSetResponse { PersonalRecord = newPR };
     }
 
     /// <summary>
@@ -430,6 +482,163 @@ public class WorkoutsController : ControllerBase
     }
 
     /// <summary>
+    /// Delete a set from an exercise
+    /// </summary>
+    [HttpDelete("sets/{setId}")]
+    public async Task<IActionResult> DeleteSet(int setId)
+    {
+        var userId = this.GetUserId();
+
+        var set = await _context.ExerciseSets
+            .Include(s => s.UserExerciseLog)
+                .ThenInclude(el => el.UserWorkoutDay)
+                    .ThenInclude(d => d.UserWorkoutPlan)
+            .FirstOrDefaultAsync(s => s.Id == setId);
+
+        if (set == null) return NotFound();
+
+        // Verify ownership
+        if (set.UserExerciseLog.UserWorkoutDay.UserWorkoutPlan.UserId != userId)
+            return Forbid();
+
+        // Don't allow deleting if it's the last set
+        var setsCount = await _context.ExerciseSets
+            .CountAsync(s => s.UserExerciseLogId == set.UserExerciseLogId);
+
+        if (setsCount <= 1)
+            return BadRequest("Cannot delete the last set of an exercise");
+
+        _context.ExerciseSets.Remove(set);
+        await _context.SaveChangesAsync();
+
+        // Renumber remaining sets
+        var remainingSets = await _context.ExerciseSets
+            .Where(s => s.UserExerciseLogId == set.UserExerciseLogId)
+            .OrderBy(s => s.SetNumber)
+            .ToListAsync();
+
+        for (int i = 0; i < remainingSets.Count; i++)
+        {
+            remainingSets[i].SetNumber = i + 1;
+        }
+        await _context.SaveChangesAsync();
+
+        return NoContent();
+    }
+
+    /// <summary>
+    /// Add an exercise to a workout day
+    /// </summary>
+    [HttpPost("days/{dayId}/exercises")]
+    public async Task<ActionResult<UserExerciseDto>> AddExerciseToDay(int dayId, [FromBody] AddExerciseRequest request)
+    {
+        var userId = this.GetUserId();
+
+        var day = await _context.UserWorkoutDays
+            .Include(d => d.UserWorkoutPlan)
+            .Include(d => d.ExerciseLogs)
+            .FirstOrDefaultAsync(d => d.Id == dayId);
+
+        if (day == null) return NotFound();
+
+        // Verify ownership
+        if (day.UserWorkoutPlan.UserId != userId)
+            return Forbid();
+
+        // Check if day is already completed
+        if (day.CompletedAt != null)
+            return BadRequest("Cannot add exercises to a completed workout");
+
+        // Verify exercise exists
+        var exercise = await _context.Exercises
+            .Include(e => e.PrimaryMuscleGroup)
+            .FirstOrDefaultAsync(e => e.Id == request.ExerciseId);
+        if (exercise == null)
+            return BadRequest("Exercise not found");
+
+        // Get next order index
+        var maxOrder = day.ExerciseLogs.Any() ? day.ExerciseLogs.Max(el => el.OrderIndex) : -1;
+
+        var exerciseLog = new UserExerciseLog
+        {
+            UserWorkoutDayId = dayId,
+            ExerciseId = request.ExerciseId,
+            OrderIndex = maxOrder + 1
+        };
+
+        _context.UserExerciseLogs.Add(exerciseLog);
+        await _context.SaveChangesAsync();
+
+        // Add default sets (3 sets of 10 reps)
+        var sets = new List<ExerciseSet>();
+        for (int i = 1; i <= request.Sets; i++)
+        {
+            sets.Add(new ExerciseSet
+            {
+                UserExerciseLogId = exerciseLog.Id,
+                SetNumber = i,
+                TargetReps = request.TargetReps,
+                Completed = false
+            });
+        }
+        _context.ExerciseSets.AddRange(sets);
+        await _context.SaveChangesAsync();
+
+        return new UserExerciseDto
+        {
+            Id = exerciseLog.Id,
+            ExerciseId = exercise.Id,
+            ExerciseName = exercise.Name,
+            PrimaryMuscleGroup = exercise.PrimaryMuscleGroup?.Name,
+            ExerciseType = exercise.Type.ToString(),
+            ExerciseRole = exercise.DefaultRole.ToString(),
+            SupersetGroupId = null,
+            SupersetOrder = null,
+            Sets = sets.Select(s => new ExerciseSetDto
+            {
+                Id = s.Id,
+                SetNumber = s.SetNumber,
+                TargetReps = s.TargetReps,
+                ActualReps = null,
+                Weight = null,
+                Completed = false
+            }).ToList()
+        };
+    }
+
+    /// <summary>
+    /// Delete an exercise from a workout day
+    /// </summary>
+    [HttpDelete("exercises/{exerciseLogId}")]
+    public async Task<IActionResult> DeleteExercise(int exerciseLogId)
+    {
+        var userId = this.GetUserId();
+
+        var exerciseLog = await _context.UserExerciseLogs
+            .Include(el => el.Sets)
+            .Include(el => el.UserWorkoutDay)
+                .ThenInclude(d => d.UserWorkoutPlan)
+            .FirstOrDefaultAsync(el => el.Id == exerciseLogId);
+
+        if (exerciseLog == null) return NotFound();
+
+        // Verify ownership
+        if (exerciseLog.UserWorkoutDay.UserWorkoutPlan.UserId != userId)
+            return Forbid();
+
+        // Check if day is already completed
+        if (exerciseLog.UserWorkoutDay.CompletedAt != null)
+            return BadRequest("Cannot delete exercises from a completed workout");
+
+        // Delete all sets first
+        _context.ExerciseSets.RemoveRange(exerciseLog.Sets);
+        _context.UserExerciseLogs.Remove(exerciseLog);
+        await _context.SaveChangesAsync();
+
+        return NoContent();
+    }
+
+    /// <summary>
     /// Get progression suggestion for an exercise
     /// </summary>
     [HttpGet("progression/{exerciseId}")]
@@ -465,6 +674,82 @@ public class WorkoutsController : ControllerBase
         return history;
     }
 
+    /// <summary>
+    /// Get all personal records for the user
+    /// </summary>
+    [HttpGet("personal-records")]
+    public async Task<ActionResult<List<PersonalRecordDto>>> GetPersonalRecords()
+    {
+        var userId = this.GetUserId();
+        var prs = await _prService.GetAllPRs(userId);
+
+        return prs.Select(pr => new PersonalRecordDto
+        {
+            ExerciseId = pr.ExerciseId,
+            ExerciseName = pr.Exercise.Name,
+            MaxWeight = pr.MaxWeight,
+            BestSetReps = pr.BestSetReps,
+            BestSetWeight = pr.BestSetWeight
+        }).ToList();
+    }
+
+    /// <summary>
+    /// Get personal record for a specific exercise
+    /// </summary>
+    [HttpGet("personal-records/{exerciseId}")]
+    public async Task<ActionResult<PersonalRecordDto>> GetPersonalRecord(int exerciseId)
+    {
+        var userId = this.GetUserId();
+        var pr = await _prService.GetPR(userId, exerciseId);
+
+        if (pr == null) return NotFound();
+
+        return new PersonalRecordDto
+        {
+            ExerciseId = pr.ExerciseId,
+            ExerciseName = pr.Exercise.Name,
+            MaxWeight = pr.MaxWeight,
+            BestSetReps = pr.BestSetReps,
+            BestSetWeight = pr.BestSetWeight
+        };
+    }
+
+    /// <summary>
+    /// Get all exercises available to the user (filtered by their equipment)
+    /// </summary>
+    [HttpGet("exercises")]
+    public async Task<ActionResult<List<ExerciseListDto>>> GetAllExercises()
+    {
+        var userId = this.GetUserId();
+
+        // Get user's equipment
+        var userEquipmentIds = await _context.Set<UserEquipment>()
+            .Where(ue => ue.UserId == userId)
+            .Select(ue => ue.EquipmentId)
+            .ToListAsync();
+
+        // Always include bodyweight
+        if (!userEquipmentIds.Contains(1))
+            userEquipmentIds.Add(1);
+
+        var exercises = await _context.Exercises
+            .Include(e => e.PrimaryMuscleGroup)
+            .Include(e => e.RequiredEquipment)
+            .Where(e => e.RequiredEquipment.All(re => userEquipmentIds.Contains(re.EquipmentId)))
+            .OrderBy(e => e.PrimaryMuscleGroup!.Name)
+            .ThenBy(e => e.Name)
+            .Select(e => new ExerciseListDto
+            {
+                Id = e.Id,
+                Name = e.Name,
+                PrimaryMuscleGroup = e.PrimaryMuscleGroup!.Name,
+                ExerciseType = e.Type.ToString()
+            })
+            .ToListAsync();
+
+        return exercises;
+    }
+
     private async Task<UserWorkoutPlanDto> GetPlanDto(int planId)
     {
         var plan = await _context.UserWorkoutPlans
@@ -491,6 +776,7 @@ public class WorkoutsController : ControllerBase
             .Include(p => p.WorkoutDays)
                 .ThenInclude(d => d.ExerciseLogs)
                     .ThenInclude(el => el.Exercise)
+                        .ThenInclude(e => e.PrimaryMuscleGroup)
             .Include(p => p.WorkoutDays)
                 .ThenInclude(d => d.ExerciseLogs)
                     .ThenInclude(el => el.Sets)
@@ -525,6 +811,11 @@ public class WorkoutsController : ControllerBase
                 Id = el.Id,
                 ExerciseId = el.ExerciseId,
                 ExerciseName = el.Exercise.Name,
+                PrimaryMuscleGroup = el.Exercise.PrimaryMuscleGroup?.Name,
+                ExerciseType = el.Exercise.Type.ToString(),
+                ExerciseRole = el.Exercise.DefaultRole.ToString(),
+                SupersetGroupId = el.SupersetGroupId,
+                SupersetOrder = el.SupersetOrder,
                 Sets = el.Sets.OrderBy(s => s.SetNumber).Select(s => new ExerciseSetDto
                 {
                     Id = s.Id,
@@ -556,11 +847,26 @@ public class ExerciseAlternativeDto
     public string? Description { get; set; }
 }
 
+public class ExerciseListDto
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = "";
+    public string PrimaryMuscleGroup { get; set; } = "";
+    public string ExerciseType { get; set; } = "";
+}
+
 public class UpdateSetRequest
 {
     public int? ActualReps { get; set; }
     public decimal? Weight { get; set; }
     public bool? Completed { get; set; }
+}
+
+public class AddExerciseRequest
+{
+    public int ExerciseId { get; set; }
+    public int Sets { get; set; } = 3;
+    public int TargetReps { get; set; } = 10;
 }
 
 public class UserWorkoutPlanDto
@@ -602,6 +908,11 @@ public class UserExerciseDto
     public int Id { get; set; }
     public int ExerciseId { get; set; }
     public string ExerciseName { get; set; } = "";
+    public string? PrimaryMuscleGroup { get; set; }
+    public string? ExerciseType { get; set; }
+    public string? ExerciseRole { get; set; }
+    public int? SupersetGroupId { get; set; }
+    public int? SupersetOrder { get; set; }
     public List<ExerciseSetDto> Sets { get; set; } = [];
 }
 
@@ -621,6 +932,7 @@ public class HomeDataDto
     public int WorkoutsCompleted { get; set; }
     public NextWorkoutDto? NextWorkout { get; set; }
     public List<RecentWorkoutDto> RecentWorkouts { get; set; } = [];
+    public List<PersonalRecordDto> PersonalRecords { get; set; } = [];
 }
 
 public class NextWorkoutDto
@@ -647,4 +959,18 @@ public class WorkoutHistoryDto
     public DateTime CompletedAt { get; set; }
     public int ExerciseCount { get; set; }
     public int TotalSets { get; set; }
+}
+
+public class UpdateSetResponse
+{
+    public PersonalRecordDto? PersonalRecord { get; set; }
+}
+
+public class PersonalRecordDto
+{
+    public int ExerciseId { get; set; }
+    public string? ExerciseName { get; set; }
+    public decimal MaxWeight { get; set; }
+    public int BestSetReps { get; set; }
+    public decimal BestSetWeight { get; set; }
 }

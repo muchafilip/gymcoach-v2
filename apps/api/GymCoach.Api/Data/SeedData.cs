@@ -50,71 +50,91 @@ public static class SeedData
             }
         );
 
-        // Exercises
+        // Rep Schemes
+        modelBuilder.Entity<RepScheme>().HasData(
+            new RepScheme { Id = 1, Name = "Power", Type = RepSchemeType.Power, MinReps = 1, MaxReps = 3, TargetSets = 5, RestSeconds = 180, IsSystem = true },
+            new RepScheme { Id = 2, Name = "Strength", Type = RepSchemeType.Strength, MinReps = 4, MaxReps = 6, TargetSets = 4, RestSeconds = 150, IsSystem = true },
+            new RepScheme { Id = 3, Name = "Hypertrophy", Type = RepSchemeType.Hypertrophy, MinReps = 8, MaxReps = 12, TargetSets = 3, RestSeconds = 90, IsSystem = true },
+            new RepScheme { Id = 4, Name = "Muscular Endurance", Type = RepSchemeType.MuscularEndurance, MinReps = 15, MaxReps = 20, TargetSets = 3, RestSeconds = 60, IsSystem = true },
+            new RepScheme { Id = 5, Name = "Cardio/HIIT", Type = RepSchemeType.CardioHiit, MinReps = 20, MaxReps = 50, TargetSets = 2, RestSeconds = 30, IsSystem = true },
+            new RepScheme { Id = 6, Name = "EMOM", Type = RepSchemeType.EMOM, DurationSeconds = 60, TargetSets = 10, IsSystem = true },
+            new RepScheme { Id = 7, Name = "AMRAP", Type = RepSchemeType.AMRAP, DurationSeconds = 60, TargetSets = 1, IsSystem = true },
+            new RepScheme { Id = 8, Name = "Timed Set", Type = RepSchemeType.TimedSet, DurationSeconds = 30, TargetSets = 3, RestSeconds = 60, IsSystem = true }
+        );
+
+        // Superset Templates (antagonist pairs)
+        modelBuilder.Entity<SupersetTemplate>().HasData(
+            new SupersetTemplate { Id = 1, Name = "Chest + Back", IsAntagonist = true, MuscleGroupAId = 1, MuscleGroupBId = 2 },
+            new SupersetTemplate { Id = 2, Name = "Biceps + Triceps", IsAntagonist = true, MuscleGroupAId = 4, MuscleGroupBId = 5 },
+            new SupersetTemplate { Id = 3, Name = "Quads + Hamstrings", IsAntagonist = true, MuscleGroupAId = 6, MuscleGroupBId = 7 },
+            new SupersetTemplate { Id = 4, Name = "Shoulders + Back", IsAntagonist = true, MuscleGroupAId = 3, MuscleGroupBId = 2 }
+        );
+
+        // Exercises with Type and DefaultRole
         // Chest exercises
         modelBuilder.Entity<Exercise>().HasData(
-            new Exercise { Id = 1, Name = "Push-ups", PrimaryMuscleGroupId = 1, Description = "Classic bodyweight chest exercise" },
-            new Exercise { Id = 2, Name = "Dumbbell Bench Press", PrimaryMuscleGroupId = 1, Description = "Flat bench press with dumbbells" },
-            new Exercise { Id = 3, Name = "Dumbbell Incline Press", PrimaryMuscleGroupId = 1, Description = "Incline bench press with dumbbells" },
-            new Exercise { Id = 4, Name = "Dumbbell Flyes", PrimaryMuscleGroupId = 1, Description = "Chest isolation exercise" },
-            new Exercise { Id = 5, Name = "Barbell Bench Press", PrimaryMuscleGroupId = 1, Description = "Flat bench press with barbell" },
+            new Exercise { Id = 1, Name = "Push-ups", PrimaryMuscleGroupId = 1, Description = "Classic bodyweight chest exercise", Type = ExerciseType.Compound, DefaultRole = ExerciseRole.Accessory },
+            new Exercise { Id = 2, Name = "Dumbbell Bench Press", PrimaryMuscleGroupId = 1, Description = "Flat bench press with dumbbells", Type = ExerciseType.Compound, DefaultRole = ExerciseRole.Accessory },
+            new Exercise { Id = 3, Name = "Dumbbell Incline Press", PrimaryMuscleGroupId = 1, Description = "Incline bench press with dumbbells", Type = ExerciseType.Compound, DefaultRole = ExerciseRole.Accessory },
+            new Exercise { Id = 4, Name = "Dumbbell Flyes", PrimaryMuscleGroupId = 1, Description = "Chest isolation exercise", Type = ExerciseType.Isolation, DefaultRole = ExerciseRole.Finisher },
+            new Exercise { Id = 5, Name = "Barbell Bench Press", PrimaryMuscleGroupId = 1, Description = "Flat bench press with barbell", Type = ExerciseType.Compound, DefaultRole = ExerciseRole.MainMover },
 
             // Back exercises
-            new Exercise { Id = 6, Name = "Pull-ups", PrimaryMuscleGroupId = 2, Description = "Bodyweight back exercise" },
-            new Exercise { Id = 7, Name = "Dumbbell Rows", PrimaryMuscleGroupId = 2, Description = "Single arm dumbbell row" },
-            new Exercise { Id = 8, Name = "Barbell Rows", PrimaryMuscleGroupId = 2, Description = "Bent over barbell row" },
-            new Exercise { Id = 9, Name = "Lat Pulldown", PrimaryMuscleGroupId = 2, Description = "Cable lat pulldown" },
-            new Exercise { Id = 10, Name = "Seated Cable Row", PrimaryMuscleGroupId = 2, Description = "Cable row for back thickness" },
+            new Exercise { Id = 6, Name = "Pull-ups", PrimaryMuscleGroupId = 2, Description = "Bodyweight back exercise", Type = ExerciseType.Compound, DefaultRole = ExerciseRole.MainMover },
+            new Exercise { Id = 7, Name = "Dumbbell Rows", PrimaryMuscleGroupId = 2, Description = "Single arm dumbbell row", Type = ExerciseType.Compound, DefaultRole = ExerciseRole.Accessory },
+            new Exercise { Id = 8, Name = "Barbell Rows", PrimaryMuscleGroupId = 2, Description = "Bent over barbell row", Type = ExerciseType.Compound, DefaultRole = ExerciseRole.MainMover },
+            new Exercise { Id = 9, Name = "Lat Pulldown", PrimaryMuscleGroupId = 2, Description = "Cable lat pulldown", Type = ExerciseType.Compound, DefaultRole = ExerciseRole.Accessory },
+            new Exercise { Id = 10, Name = "Seated Cable Row", PrimaryMuscleGroupId = 2, Description = "Cable row for back thickness", Type = ExerciseType.Compound, DefaultRole = ExerciseRole.Accessory },
 
             // Shoulder exercises
-            new Exercise { Id = 11, Name = "Dumbbell Shoulder Press", PrimaryMuscleGroupId = 3, Description = "Overhead press with dumbbells" },
-            new Exercise { Id = 12, Name = "Dumbbell Lateral Raises", PrimaryMuscleGroupId = 3, Description = "Side deltoid isolation" },
-            new Exercise { Id = 13, Name = "Dumbbell Front Raises", PrimaryMuscleGroupId = 3, Description = "Front deltoid isolation" },
-            new Exercise { Id = 14, Name = "Face Pulls", PrimaryMuscleGroupId = 3, Description = "Rear deltoid and rotator cuff" },
-            new Exercise { Id = 15, Name = "Barbell Overhead Press", PrimaryMuscleGroupId = 3, Description = "Standing overhead press" },
+            new Exercise { Id = 11, Name = "Dumbbell Shoulder Press", PrimaryMuscleGroupId = 3, Description = "Overhead press with dumbbells", Type = ExerciseType.Compound, DefaultRole = ExerciseRole.Accessory },
+            new Exercise { Id = 12, Name = "Dumbbell Lateral Raises", PrimaryMuscleGroupId = 3, Description = "Side deltoid isolation", Type = ExerciseType.Isolation, DefaultRole = ExerciseRole.Finisher },
+            new Exercise { Id = 13, Name = "Dumbbell Front Raises", PrimaryMuscleGroupId = 3, Description = "Front deltoid isolation", Type = ExerciseType.Isolation, DefaultRole = ExerciseRole.Finisher },
+            new Exercise { Id = 14, Name = "Face Pulls", PrimaryMuscleGroupId = 3, Description = "Rear deltoid and rotator cuff", Type = ExerciseType.Isolation, DefaultRole = ExerciseRole.Finisher },
+            new Exercise { Id = 15, Name = "Barbell Overhead Press", PrimaryMuscleGroupId = 3, Description = "Standing overhead press", Type = ExerciseType.Compound, DefaultRole = ExerciseRole.MainMover },
 
             // Biceps exercises
-            new Exercise { Id = 16, Name = "Dumbbell Bicep Curls", PrimaryMuscleGroupId = 4, Description = "Standing dumbbell curls" },
-            new Exercise { Id = 17, Name = "Hammer Curls", PrimaryMuscleGroupId = 4, Description = "Neutral grip dumbbell curls" },
-            new Exercise { Id = 18, Name = "Barbell Curls", PrimaryMuscleGroupId = 4, Description = "Standing barbell curls" },
-            new Exercise { Id = 19, Name = "Cable Curls", PrimaryMuscleGroupId = 4, Description = "Cable bicep curls" },
-            new Exercise { Id = 20, Name = "Chin-ups", PrimaryMuscleGroupId = 4, Description = "Underhand pull-ups" },
+            new Exercise { Id = 16, Name = "Dumbbell Bicep Curls", PrimaryMuscleGroupId = 4, Description = "Standing dumbbell curls", Type = ExerciseType.Isolation, DefaultRole = ExerciseRole.Finisher },
+            new Exercise { Id = 17, Name = "Hammer Curls", PrimaryMuscleGroupId = 4, Description = "Neutral grip dumbbell curls", Type = ExerciseType.Isolation, DefaultRole = ExerciseRole.Finisher },
+            new Exercise { Id = 18, Name = "Barbell Curls", PrimaryMuscleGroupId = 4, Description = "Standing barbell curls", Type = ExerciseType.Isolation, DefaultRole = ExerciseRole.Accessory },
+            new Exercise { Id = 19, Name = "Cable Curls", PrimaryMuscleGroupId = 4, Description = "Cable bicep curls", Type = ExerciseType.Isolation, DefaultRole = ExerciseRole.Finisher },
+            new Exercise { Id = 20, Name = "Chin-ups", PrimaryMuscleGroupId = 4, Description = "Underhand pull-ups", Type = ExerciseType.Compound, DefaultRole = ExerciseRole.MainMover },
 
             // Triceps exercises
-            new Exercise { Id = 21, Name = "Tricep Dips", PrimaryMuscleGroupId = 5, Description = "Bodyweight tricep exercise" },
-            new Exercise { Id = 22, Name = "Dumbbell Tricep Extension", PrimaryMuscleGroupId = 5, Description = "Overhead tricep extension" },
-            new Exercise { Id = 23, Name = "Tricep Pushdowns", PrimaryMuscleGroupId = 5, Description = "Cable pushdowns" },
-            new Exercise { Id = 24, Name = "Close Grip Bench Press", PrimaryMuscleGroupId = 5, Description = "Narrow grip bench press" },
-            new Exercise { Id = 25, Name = "Diamond Push-ups", PrimaryMuscleGroupId = 5, Description = "Narrow push-ups for triceps" },
+            new Exercise { Id = 21, Name = "Tricep Dips", PrimaryMuscleGroupId = 5, Description = "Bodyweight tricep exercise", Type = ExerciseType.Compound, DefaultRole = ExerciseRole.Accessory },
+            new Exercise { Id = 22, Name = "Dumbbell Tricep Extension", PrimaryMuscleGroupId = 5, Description = "Overhead tricep extension", Type = ExerciseType.Isolation, DefaultRole = ExerciseRole.Finisher },
+            new Exercise { Id = 23, Name = "Tricep Pushdowns", PrimaryMuscleGroupId = 5, Description = "Cable pushdowns", Type = ExerciseType.Isolation, DefaultRole = ExerciseRole.Finisher },
+            new Exercise { Id = 24, Name = "Close Grip Bench Press", PrimaryMuscleGroupId = 5, Description = "Narrow grip bench press", Type = ExerciseType.Compound, DefaultRole = ExerciseRole.Accessory },
+            new Exercise { Id = 25, Name = "Diamond Push-ups", PrimaryMuscleGroupId = 5, Description = "Narrow push-ups for triceps", Type = ExerciseType.Compound, DefaultRole = ExerciseRole.Accessory },
 
             // Quadriceps exercises
-            new Exercise { Id = 26, Name = "Bodyweight Squats", PrimaryMuscleGroupId = 6, Description = "Basic bodyweight squat" },
-            new Exercise { Id = 27, Name = "Goblet Squats", PrimaryMuscleGroupId = 6, Description = "Dumbbell held at chest" },
-            new Exercise { Id = 28, Name = "Barbell Squats", PrimaryMuscleGroupId = 6, Description = "Back squats with barbell" },
-            new Exercise { Id = 29, Name = "Leg Press", PrimaryMuscleGroupId = 6, Description = "Machine leg press" },
-            new Exercise { Id = 30, Name = "Lunges", PrimaryMuscleGroupId = 6, Description = "Walking or stationary lunges" },
+            new Exercise { Id = 26, Name = "Bodyweight Squats", PrimaryMuscleGroupId = 6, Description = "Basic bodyweight squat", Type = ExerciseType.Compound, DefaultRole = ExerciseRole.Accessory },
+            new Exercise { Id = 27, Name = "Goblet Squats", PrimaryMuscleGroupId = 6, Description = "Dumbbell held at chest", Type = ExerciseType.Compound, DefaultRole = ExerciseRole.Accessory },
+            new Exercise { Id = 28, Name = "Barbell Squats", PrimaryMuscleGroupId = 6, Description = "Back squats with barbell", Type = ExerciseType.Compound, DefaultRole = ExerciseRole.MainMover },
+            new Exercise { Id = 29, Name = "Leg Press", PrimaryMuscleGroupId = 6, Description = "Machine leg press", Type = ExerciseType.Compound, DefaultRole = ExerciseRole.Accessory },
+            new Exercise { Id = 30, Name = "Lunges", PrimaryMuscleGroupId = 6, Description = "Walking or stationary lunges", Type = ExerciseType.Compound, DefaultRole = ExerciseRole.Accessory },
 
             // Hamstrings exercises
-            new Exercise { Id = 31, Name = "Romanian Deadlift", PrimaryMuscleGroupId = 7, Description = "Dumbbell or barbell RDL" },
-            new Exercise { Id = 32, Name = "Leg Curls", PrimaryMuscleGroupId = 7, Description = "Machine leg curls" },
-            new Exercise { Id = 33, Name = "Good Mornings", PrimaryMuscleGroupId = 7, Description = "Barbell good mornings" },
-            new Exercise { Id = 34, Name = "Nordic Curls", PrimaryMuscleGroupId = 7, Description = "Bodyweight hamstring exercise" },
+            new Exercise { Id = 31, Name = "Romanian Deadlift", PrimaryMuscleGroupId = 7, Description = "Dumbbell or barbell RDL", Type = ExerciseType.Compound, DefaultRole = ExerciseRole.MainMover },
+            new Exercise { Id = 32, Name = "Leg Curls", PrimaryMuscleGroupId = 7, Description = "Machine leg curls", Type = ExerciseType.Isolation, DefaultRole = ExerciseRole.Finisher },
+            new Exercise { Id = 33, Name = "Good Mornings", PrimaryMuscleGroupId = 7, Description = "Barbell good mornings", Type = ExerciseType.Compound, DefaultRole = ExerciseRole.Accessory },
+            new Exercise { Id = 34, Name = "Nordic Curls", PrimaryMuscleGroupId = 7, Description = "Bodyweight hamstring exercise", Type = ExerciseType.Isolation, DefaultRole = ExerciseRole.Finisher },
 
             // Glutes exercises
-            new Exercise { Id = 35, Name = "Hip Thrusts", PrimaryMuscleGroupId = 8, Description = "Barbell or dumbbell hip thrusts" },
-            new Exercise { Id = 36, Name = "Glute Bridges", PrimaryMuscleGroupId = 8, Description = "Bodyweight glute bridges" },
-            new Exercise { Id = 37, Name = "Bulgarian Split Squats", PrimaryMuscleGroupId = 8, Description = "Rear foot elevated split squats" },
+            new Exercise { Id = 35, Name = "Hip Thrusts", PrimaryMuscleGroupId = 8, Description = "Barbell or dumbbell hip thrusts", Type = ExerciseType.Compound, DefaultRole = ExerciseRole.MainMover },
+            new Exercise { Id = 36, Name = "Glute Bridges", PrimaryMuscleGroupId = 8, Description = "Bodyweight glute bridges", Type = ExerciseType.Isolation, DefaultRole = ExerciseRole.Finisher },
+            new Exercise { Id = 37, Name = "Bulgarian Split Squats", PrimaryMuscleGroupId = 8, Description = "Rear foot elevated split squats", Type = ExerciseType.Compound, DefaultRole = ExerciseRole.Accessory },
 
             // Calves exercises
-            new Exercise { Id = 38, Name = "Standing Calf Raises", PrimaryMuscleGroupId = 9, Description = "Dumbbell calf raises" },
-            new Exercise { Id = 39, Name = "Seated Calf Raises", PrimaryMuscleGroupId = 9, Description = "Machine seated calf raises" },
+            new Exercise { Id = 38, Name = "Standing Calf Raises", PrimaryMuscleGroupId = 9, Description = "Dumbbell calf raises", Type = ExerciseType.Isolation, DefaultRole = ExerciseRole.Finisher },
+            new Exercise { Id = 39, Name = "Seated Calf Raises", PrimaryMuscleGroupId = 9, Description = "Machine seated calf raises", Type = ExerciseType.Isolation, DefaultRole = ExerciseRole.Finisher },
 
             // Core exercises
-            new Exercise { Id = 40, Name = "Plank", PrimaryMuscleGroupId = 10, Description = "Isometric core hold" },
-            new Exercise { Id = 41, Name = "Crunches", PrimaryMuscleGroupId = 10, Description = "Basic abdominal crunches" },
-            new Exercise { Id = 42, Name = "Hanging Leg Raises", PrimaryMuscleGroupId = 10, Description = "Hanging from bar leg raises" },
-            new Exercise { Id = 43, Name = "Russian Twists", PrimaryMuscleGroupId = 10, Description = "Rotational core exercise" },
-            new Exercise { Id = 44, Name = "Dead Bug", PrimaryMuscleGroupId = 10, Description = "Anti-rotation core exercise" }
+            new Exercise { Id = 40, Name = "Plank", PrimaryMuscleGroupId = 10, Description = "Isometric core hold", Type = ExerciseType.Isolation, DefaultRole = ExerciseRole.Finisher },
+            new Exercise { Id = 41, Name = "Crunches", PrimaryMuscleGroupId = 10, Description = "Basic abdominal crunches", Type = ExerciseType.Isolation, DefaultRole = ExerciseRole.Finisher },
+            new Exercise { Id = 42, Name = "Hanging Leg Raises", PrimaryMuscleGroupId = 10, Description = "Hanging from bar leg raises", Type = ExerciseType.Compound, DefaultRole = ExerciseRole.Accessory },
+            new Exercise { Id = 43, Name = "Russian Twists", PrimaryMuscleGroupId = 10, Description = "Rotational core exercise", Type = ExerciseType.Isolation, DefaultRole = ExerciseRole.Finisher },
+            new Exercise { Id = 44, Name = "Dead Bug", PrimaryMuscleGroupId = 10, Description = "Anti-rotation core exercise", Type = ExerciseType.Isolation, DefaultRole = ExerciseRole.Finisher }
         );
 
         // Exercise Equipment Relationships
@@ -246,6 +266,14 @@ public static class SeedData
                 Name = "Upper/Lower Split",
                 Description = "4-day split alternating between upper and lower body.",
                 IsPremium = true
+            },
+            new WorkoutTemplate
+            {
+                Id = 4,
+                Name = "Superset Training",
+                Description = "High-intensity 3-day program with antagonist supersets for efficient workouts.",
+                IsPremium = true,
+                HasSupersets = true
             }
         );
 
@@ -267,7 +295,12 @@ public static class SeedData
             new WorkoutDayTemplate { Id = 10, WorkoutTemplateId = 3, DayNumber = 1, Name = "Upper A" },
             new WorkoutDayTemplate { Id = 11, WorkoutTemplateId = 3, DayNumber = 2, Name = "Lower A" },
             new WorkoutDayTemplate { Id = 12, WorkoutTemplateId = 3, DayNumber = 3, Name = "Upper B" },
-            new WorkoutDayTemplate { Id = 13, WorkoutTemplateId = 3, DayNumber = 4, Name = "Lower B" }
+            new WorkoutDayTemplate { Id = 13, WorkoutTemplateId = 3, DayNumber = 4, Name = "Lower B" },
+
+            // Superset Training (antagonist pairs)
+            new WorkoutDayTemplate { Id = 14, WorkoutTemplateId = 4, DayNumber = 1, Name = "Chest + Back" },
+            new WorkoutDayTemplate { Id = 15, WorkoutTemplateId = 4, DayNumber = 2, Name = "Arms (Bi + Tri)" },
+            new WorkoutDayTemplate { Id = 16, WorkoutTemplateId = 4, DayNumber = 3, Name = "Legs (Quads + Hams)" }
         );
 
         // Target muscles for each day template
@@ -343,7 +376,19 @@ public static class SeedData
             new WorkoutDayTemplateMuscle { WorkoutDayTemplateId = 13, MuscleGroupId = 7, ExerciseCount = 1 },
             new WorkoutDayTemplateMuscle { WorkoutDayTemplateId = 13, MuscleGroupId = 8, ExerciseCount = 1 },
             new WorkoutDayTemplateMuscle { WorkoutDayTemplateId = 13, MuscleGroupId = 9, ExerciseCount = 1 },
-            new WorkoutDayTemplateMuscle { WorkoutDayTemplateId = 13, MuscleGroupId = 10, ExerciseCount = 1 }
+            new WorkoutDayTemplateMuscle { WorkoutDayTemplateId = 13, MuscleGroupId = 10, ExerciseCount = 1 },
+
+            // Superset Training - Chest + Back day (antagonist supersets)
+            new WorkoutDayTemplateMuscle { WorkoutDayTemplateId = 14, MuscleGroupId = 1, ExerciseCount = 3 },  // Chest x3
+            new WorkoutDayTemplateMuscle { WorkoutDayTemplateId = 14, MuscleGroupId = 2, ExerciseCount = 3 },  // Back x3
+
+            // Superset Training - Arms (Bi + Tri) day (antagonist supersets)
+            new WorkoutDayTemplateMuscle { WorkoutDayTemplateId = 15, MuscleGroupId = 4, ExerciseCount = 3 },  // Biceps x3
+            new WorkoutDayTemplateMuscle { WorkoutDayTemplateId = 15, MuscleGroupId = 5, ExerciseCount = 3 },  // Triceps x3
+
+            // Superset Training - Legs (Quads + Hams) day (antagonist supersets)
+            new WorkoutDayTemplateMuscle { WorkoutDayTemplateId = 16, MuscleGroupId = 6, ExerciseCount = 3 },  // Quads x3
+            new WorkoutDayTemplateMuscle { WorkoutDayTemplateId = 16, MuscleGroupId = 7, ExerciseCount = 3 }   // Hamstrings x3
         );
     }
 }

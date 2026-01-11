@@ -128,6 +128,31 @@ export default function HomeScreen() {
           </View>
         </View>
 
+        {/* Personal Bests */}
+        {data?.personalRecords && data.personalRecords.length > 0 && (
+          <View style={styles.section}>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Personal Bests</Text>
+            <View style={[styles.prsContainer, { backgroundColor: colors.surface }]}>
+              {data.personalRecords.map((pr, index) => (
+                <View
+                  key={pr.exerciseId}
+                  style={[
+                    styles.prRow,
+                    index < data.personalRecords.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border },
+                  ]}
+                >
+                  <Text style={[styles.prExercise, { color: colors.text }]} numberOfLines={1}>
+                    {pr.exerciseName}
+                  </Text>
+                  <Text style={[styles.prValue, { color: colors.primary }]}>
+                    {pr.bestSetReps}×{pr.bestSetWeight}kg
+                  </Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        )}
+
         {/* Next Workout */}
         {data?.nextWorkout ? (
           <View style={styles.section}>
@@ -319,5 +344,26 @@ const styles = StyleSheet.create({
   recentArrow: {
     fontSize: 20,
     marginLeft: 8,
+  },
+  prsContainer: {
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  prRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+  },
+  prExercise: {
+    fontSize: 14,
+    fontWeight: '500',
+    flex: 1,
+    marginRight: 12,
+  },
+  prValue: {
+    fontSize: 15,
+    fontWeight: '700',
   },
 });

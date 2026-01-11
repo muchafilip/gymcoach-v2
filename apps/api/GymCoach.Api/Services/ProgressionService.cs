@@ -127,10 +127,3 @@ public class ProgressionService
         };
     }
 }
-
-public class SetTarget
-{
-    public int TargetReps { get; set; }
-    public decimal Weight { get; set; }
-    public string? Suggestion { get; set; }
-}

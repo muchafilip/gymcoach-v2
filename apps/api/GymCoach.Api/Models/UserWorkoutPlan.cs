@@ -45,6 +45,10 @@ public class UserExerciseLog
     public int Id { get; set; }
     public int OrderIndex { get; set; }
 
+    // Superset grouping (null if not in a superset)
+    public int? SupersetGroupId { get; set; }
+    public int? SupersetOrder { get; set; }  // 1 = first exercise, 2 = second
+
     // Foreign keys
     public int UserWorkoutDayId { get; set; }
     public UserWorkoutDay UserWorkoutDay { get; set; } = null!;
@@ -64,6 +68,14 @@ public class ExerciseSet
     public int? ActualReps { get; set; }
     public decimal? Weight { get; set; }
     public bool Completed { get; set; }
+
+    // Rep scheme (optional - uses default progression if null)
+    public int? RepSchemeId { get; set; }
+    public RepScheme? RepScheme { get; set; }
+
+    // For time-based sets (EMOM, AMRAP, etc.)
+    public int? DurationSeconds { get; set; }
+    public int? ActualDurationSeconds { get; set; }
 
     // Foreign key
     public int UserExerciseLogId { get; set; }

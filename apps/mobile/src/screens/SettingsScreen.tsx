@@ -5,6 +5,7 @@ import {
   StyleSheet,
   TouchableOpacity,
   SafeAreaView,
+  ScrollView,
   ActivityIndicator,
   Alert,
   Switch,
@@ -14,6 +15,7 @@ import { useUserStore } from '../store/userStore';
 import { useAuthStore } from '../store/authStore';
 import { useSyncStore } from '../store/syncStore';
 import { useThemeStore } from '../store/themeStore';
+import { useFeatureStore } from '../store/featureStore';
 import { performFullSync } from '../db/sync';
 import { getUserEquipment, fetchEquipment } from '../api/equipment';
 import { Equipment } from '../types';
@@ -24,6 +26,7 @@ export default function SettingsScreen() {
   const { setEquipment } = useUserStore();
   const { lastSyncedAt, setSyncing, setLastSynced } = useSyncStore();
   const { isDarkMode, colors, toggleTheme } = useThemeStore();
+  const { devModeEnabled, isPremium, toggleDevMode, setPremiumStatus } = useFeatureStore();
   const [localSyncing, setLocalSyncing] = useState(false);
   const [equipmentNames, setEquipmentNames] = useState<string[]>([]);
   const [loadingEquipment, setLoadingEquipment] = useState(true);
@@ -128,6 +131,7 @@ export default function SettingsScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+      <ScrollView contentContainerStyle={styles.scrollContent}>
       <View style={[styles.section, { borderBottomColor: colors.border }]}>
         <Text style={[styles.sectionTitle, { color: colors.text }]}>Account</Text>
         <View style={[styles.card, { borderBottomColor: colors.surfaceAlt }]}>
@@ -196,6 +200,42 @@ export default function SettingsScreen() {
           <Text style={[styles.value, { color: colors.text }]}>1.0.0</Text>
         </View>
       </View>
+
+      <View style={[styles.section, { borderBottomColor: colors.border }]}>
+        <Text style={[styles.sectionTitle, { color: colors.text }]}>Developer</Text>
+        <View style={[styles.card, { borderBottomColor: colors.surfaceAlt }]}>
+          <View>
+            <Text style={[styles.label, { color: colors.textSecondary }]}>Dev Mode</Text>
+            <Text style={[styles.hint, { color: colors.textMuted }]}>Unlock all premium features</Text>
+          </View>
+          <Switch
+            value={devModeEnabled}
+            onValueChange={toggleDevMode}
+            trackColor={{ false: colors.border, true: colors.warning }}
+            thumbColor={colors.card}
+          />
+        </View>
+        <View style={[styles.card, { borderBottomColor: colors.surfaceAlt }]}>
+          <View>
+            <Text style={[styles.label, { color: colors.textSecondary }]}>Premium Status</Text>
+            <Text style={[styles.hint, { color: colors.textMuted }]}>Simulate subscription</Text>
+          </View>
+          <Switch
+            value={isPremium}
+            onValueChange={setPremiumStatus}
+            trackColor={{ false: colors.border, true: colors.success }}
+            thumbColor={colors.card}
+          />
+        </View>
+        {devModeEnabled && (
+          <View style={[styles.devModeIndicator, { backgroundColor: colors.warningLight }]}>
+            <Text style={[styles.devModeText, { color: colors.warning }]}>
+              Dev mode active - all features unlocked
+            </Text>
+          </View>
+        )}
+      </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -203,6 +243,9 @@ export default function SettingsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  scrollContent: {
+    paddingBottom: 40,
   },
   section: {
     padding: 20,
@@ -262,6 +305,20 @@ const styles = StyleSheet.create({
   },
   signOutButtonText: {
     fontSize: 16,
+    fontWeight: '600',
+  },
+  hint: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  devModeIndicator: {
+    marginTop: 12,
+    padding: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  devModeText: {
+    fontSize: 12,
     fontWeight: '600',
   },
 });

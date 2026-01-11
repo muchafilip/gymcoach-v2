@@ -98,10 +98,19 @@ export interface ExerciseAlternative {
   description?: string;
 }
 
+// Exercise classification types
+export type ExerciseType = 'Compound' | 'Isolation';
+export type ExerciseRole = 'MainMover' | 'Accessory' | 'Finisher';
+
 export interface UserExercise {
   id: number;
   exerciseId: number;
   exerciseName: string;
+  primaryMuscleGroup?: string;
+  exerciseType?: ExerciseType;
+  exerciseRole?: ExerciseRole;
+  supersetGroupId?: number;
+  supersetOrder?: number;
   orderIndex: number;
   sets: ExerciseSet[];
 }
@@ -129,6 +138,15 @@ export interface HomeData {
   workoutsCompleted: number;
   nextWorkout: NextWorkout | null;
   recentWorkouts: RecentWorkout[];
+  personalRecords: PersonalRecord[];
+}
+
+export interface PersonalRecord {
+  exerciseId: number;
+  exerciseName: string;
+  maxWeight: number;
+  bestSetReps: number;
+  bestSetWeight: number;
 }
 
 export interface NextWorkout {
@@ -144,4 +162,80 @@ export interface RecentWorkout {
   name: string;
   completedAt: string;
   exerciseCount: number;
+}
+
+// Rep Scheme types
+export type RepSchemeType =
+  | 'Power'
+  | 'Strength'
+  | 'Hypertrophy'
+  | 'MuscularEndurance'
+  | 'CardioHiit'
+  | 'EMOM'
+  | 'AMRAP'
+  | 'TimedSet'
+  | 'Custom';
+
+export interface RepScheme {
+  id: number;
+  name: string;
+  type: RepSchemeType;
+  minReps?: number;
+  maxReps?: number;
+  targetSets?: number;
+  durationSeconds?: number;
+  restSeconds?: number;
+  isSystem: boolean;
+}
+
+// Superset types
+export interface SupersetTemplate {
+  id: number;
+  name: string;
+  isAntagonist: boolean;
+  muscleGroupA: string;
+  muscleGroupB: string;
+}
+
+export interface SupersetSuggestion {
+  templateId: number;
+  templateName: string;
+  exerciseAId: number;
+  exerciseAName: string;
+  exerciseBId: number;
+  exerciseBName: string;
+}
+
+export interface Superset {
+  id: number;
+  exerciseLogAId: number;
+  exerciseLogBId: number;
+  isManual: boolean;
+}
+
+// Custom Template types
+export interface CustomTemplate {
+  id: number;
+  name: string;
+  description?: string;
+  days: CustomTemplateDay[];
+}
+
+export interface CustomTemplateDay {
+  id: number;
+  dayNumber: number;
+  name: string;
+  exercises: CustomTemplateExercise[];
+}
+
+export interface CustomTemplateExercise {
+  id: number;
+  exerciseId: number;
+  exerciseName: string;
+  primaryMuscleGroup: string;
+  orderIndex: number;
+  sets: number;
+  targetReps: number;
+  defaultWeight?: number;
+  notes?: string;
 }

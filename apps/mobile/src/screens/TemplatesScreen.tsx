@@ -18,7 +18,6 @@ import { WorkoutTemplate } from '../types';
 import { fetchTemplates } from '../api/templates';
 import {
   generateWorkoutPlan,
-  getActivePlan,
   getUserPlans,
   activatePlan,
   deactivatePlan,
@@ -85,28 +84,10 @@ export default function TemplatesScreen() {
     }
   };
 
-  const handleSelectTemplate = async (template: WorkoutTemplate) => {
-    setGenerating(template.id);
-    try {
-      // Check for existing active plan with this template
-      const activePlan = await getActivePlan();
-      if (activePlan && activePlan.templateId === template.id) {
-        // Navigate to existing plan to prevent data loss
-        navigation.navigate('WorkoutPlan', { planId: activePlan.id });
-        return;
-      }
-
-      // Show duration modal for new plan
-      setSelectedTemplate(template);
-      setShowDurationModal(true);
-    } catch (error) {
-      console.error('Error checking active plan:', error);
-      // If error checking, still allow creating new plan
-      setSelectedTemplate(template);
-      setShowDurationModal(true);
-    } finally {
-      setGenerating(null);
-    }
+  const handleSelectTemplate = (template: WorkoutTemplate) => {
+    // Show duration modal to create a new plan
+    setSelectedTemplate(template);
+    setShowDurationModal(true);
   };
 
   const handleCreatePlan = async (durationWeeks: number) => {
@@ -268,6 +249,22 @@ export default function TemplatesScreen() {
             ))}
           </View>
         )}
+
+        {/* My Templates Section */}
+        <View style={styles.section}>
+          <TouchableOpacity
+            style={[styles.myTemplatesCard, { backgroundColor: colors.surface, borderColor: colors.primary }]}
+            onPress={() => navigation.navigate('MyTemplates')}
+          >
+            <View style={styles.myTemplatesContent}>
+              <Text style={[styles.myTemplatesTitle, { color: colors.text }]}>My Custom Templates</Text>
+              <Text style={[styles.myTemplatesSubtitle, { color: colors.textSecondary }]}>
+                Create and manage your own workout templates
+              </Text>
+            </View>
+            <Text style={[styles.myTemplatesArrow, { color: colors.primary }]}>→</Text>
+          </TouchableOpacity>
+        </View>
 
         {/* Templates Section */}
         <View style={styles.section}>
@@ -575,5 +572,27 @@ const styles = StyleSheet.create({
   },
   cancelButtonText: {
     fontSize: 16,
+  },
+  myTemplatesCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 2,
+  },
+  myTemplatesContent: {
+    flex: 1,
+  },
+  myTemplatesTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 4,
+  },
+  myTemplatesSubtitle: {
+    fontSize: 13,
+  },
+  myTemplatesArrow: {
+    fontSize: 24,
+    marginLeft: 12,
   },
 });

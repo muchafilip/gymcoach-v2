@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { NavigationContainer, DefaultTheme, DarkTheme } from '@react-navigation/native';
+import { NavigationContainer, DefaultTheme, DarkTheme, CommonActions } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { ActivityIndicator, View } from 'react-native';
@@ -9,10 +9,14 @@ import LoginScreen from '../screens/LoginScreen';
 import OnboardingScreen from '../screens/OnboardingScreen';
 import HomeScreen from '../screens/HomeScreen';
 import TemplatesScreen from '../screens/TemplatesScreen';
+import MyTemplatesScreen from '../screens/MyTemplatesScreen';
+import TemplateBuilderScreen from '../screens/TemplateBuilderScreen';
+import DayBuilderScreen from '../screens/DayBuilderScreen';
 import WorkoutPlanScreen from '../screens/WorkoutPlanScreen';
 import WorkoutDayScreen from '../screens/WorkoutDayScreen';
 import HistoryScreen from '../screens/HistoryScreen';
 import SettingsScreen from '../screens/SettingsScreen';
+import { CustomTemplateExercise } from '../types';
 
 // Auth & Theme
 import { useAuthStore } from '../store/authStore';
@@ -34,6 +38,9 @@ export type MainTabParamList = {
 
 export type TemplatesStackParamList = {
   TemplatesList: undefined;
+  MyTemplates: undefined;
+  TemplateBuilder: { templateId: number };
+  DayBuilder: { dayId: number; dayName: string; exercises?: CustomTemplateExercise[] };
   WorkoutPlan: { planId: number };
   WorkoutDay: { dayId: number };
 };
@@ -59,6 +66,21 @@ function TemplatesNavigator() {
         name="TemplatesList"
         component={TemplatesScreen}
         options={{ title: 'Workout Templates' }}
+      />
+      <TemplatesStack.Screen
+        name="MyTemplates"
+        component={MyTemplatesScreen}
+        options={{ title: 'My Templates' }}
+      />
+      <TemplatesStack.Screen
+        name="TemplateBuilder"
+        component={TemplateBuilderScreen}
+        options={{ title: 'Edit Template' }}
+      />
+      <TemplatesStack.Screen
+        name="DayBuilder"
+        component={DayBuilderScreen}
+        options={{ title: 'Edit Day' }}
       />
       <TemplatesStack.Screen
         name="WorkoutPlan"
@@ -97,6 +119,17 @@ function MainTabs() {
         name="Templates"
         component={TemplatesNavigator}
         options={{ headerShown: false }}
+        listeners={({ navigation }) => ({
+          tabPress: (e) => {
+            // Reset the Templates stack to the initial screen when tab is pressed
+            navigation.dispatch(
+              CommonActions.reset({
+                index: 0,
+                routes: [{ name: 'Templates' }],
+              })
+            );
+          },
+        })}
       />
       <Tab.Screen name="History" component={HistoryScreen} />
       <Tab.Screen name="Settings" component={SettingsScreen} />

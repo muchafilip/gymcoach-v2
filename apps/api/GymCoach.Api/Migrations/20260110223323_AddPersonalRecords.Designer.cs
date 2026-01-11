@@ -3,6 +3,7 @@ using System;
 using GymCoach.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace GymCoach.Api.Migrations
 {
     [DbContext(typeof(GymCoachDbContext))]
-    partial class GymCoachDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260110223323_AddPersonalRecords")]
+    partial class AddPersonalRecords
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -21,45 +24,6 @@ namespace GymCoach.Api.Migrations
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
-
-            modelBuilder.Entity("GymCoach.Api.Models.CustomTemplateExercise", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<decimal?>("DefaultWeight")
-                        .HasPrecision(10, 2)
-                        .HasColumnType("numeric(10,2)");
-
-                    b.Property<int>("ExerciseId")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("Notes")
-                        .HasColumnType("text");
-
-                    b.Property<int>("OrderIndex")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("Sets")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("TargetReps")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("WorkoutDayTemplateId")
-                        .HasColumnType("integer");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ExerciseId");
-
-                    b.HasIndex("WorkoutDayTemplateId");
-
-                    b.ToTable("CustomTemplateExercises");
-                });
 
             modelBuilder.Entity("GymCoach.Api.Models.Equipment", b =>
                 {
@@ -2095,12 +2059,7 @@ namespace GymCoach.Api.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
-                    b.Property<int?>("UserId")
-                        .HasColumnType("integer");
-
                     b.HasKey("Id");
-
-                    b.HasIndex("UserId");
 
                     b.ToTable("WorkoutTemplates");
 
@@ -2137,25 +2096,6 @@ namespace GymCoach.Api.Migrations
                             IsPremium = true,
                             Name = "Superset Training"
                         });
-                });
-
-            modelBuilder.Entity("GymCoach.Api.Models.CustomTemplateExercise", b =>
-                {
-                    b.HasOne("GymCoach.Api.Models.Exercise", "Exercise")
-                        .WithMany()
-                        .HasForeignKey("ExerciseId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("GymCoach.Api.Models.WorkoutDayTemplate", "WorkoutDayTemplate")
-                        .WithMany("Exercises")
-                        .HasForeignKey("WorkoutDayTemplateId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Exercise");
-
-                    b.Navigation("WorkoutDayTemplate");
                 });
 
             modelBuilder.Entity("GymCoach.Api.Models.Exercise", b =>
@@ -2399,16 +2339,6 @@ namespace GymCoach.Api.Migrations
                     b.Navigation("WorkoutDayTemplate");
                 });
 
-            modelBuilder.Entity("GymCoach.Api.Models.WorkoutTemplate", b =>
-                {
-                    b.HasOne("GymCoach.Api.Models.User", "User")
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade);
-
-                    b.Navigation("User");
-                });
-
             modelBuilder.Entity("GymCoach.Api.Models.Equipment", b =>
                 {
                     b.Navigation("ExerciseEquipments");
@@ -2452,8 +2382,6 @@ namespace GymCoach.Api.Migrations
 
             modelBuilder.Entity("GymCoach.Api.Models.WorkoutDayTemplate", b =>
                 {
-                    b.Navigation("Exercises");
-
                     b.Navigation("TargetMuscles");
                 });
 
