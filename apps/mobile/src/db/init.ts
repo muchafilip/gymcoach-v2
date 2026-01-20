@@ -53,6 +53,14 @@ const runMigrations = async (database: SQLite.SQLiteDatabase) => {
       await database.execAsync('UPDATE UserWorkoutDay SET day_type_id = day_template_id WHERE day_type_id = 0');
       console.log('Added day_type_id column');
     }
+    if (!dayColumnNames.includes('started_at')) {
+      await database.execAsync('ALTER TABLE UserWorkoutDay ADD COLUMN started_at TEXT');
+      console.log('Added started_at column');
+    }
+    if (!dayColumnNames.includes('duration_seconds')) {
+      await database.execAsync('ALTER TABLE UserWorkoutDay ADD COLUMN duration_seconds INTEGER');
+      console.log('Added duration_seconds column');
+    }
 
     // Create indexes for new columns (safe to run multiple times with IF NOT EXISTS)
     await database.execAsync('CREATE INDEX IF NOT EXISTS idx_workout_day_week ON UserWorkoutDay(plan_id, week_number)');
@@ -177,6 +185,8 @@ const createTables = async (database: SQLite.SQLiteDatabase) => {
       day_template_id INTEGER NOT NULL,
       scheduled_date TEXT,
       completed_at TEXT,
+      started_at TEXT,
+      duration_seconds INTEGER,
       sync_status TEXT NOT NULL DEFAULT 'pending',
       FOREIGN KEY (plan_id) REFERENCES UserWorkoutPlan(id),
       FOREIGN KEY (day_template_id) REFERENCES WorkoutDayTemplate(id)

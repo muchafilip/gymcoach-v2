@@ -48,7 +48,7 @@ export default function WorkoutPlanScreen() {
   const navigation = useNavigation<NavigationProp>();
   const route = useRoute<RouteParams>();
   const { planId } = route.params;
-  const { colors } = useThemeStore();
+  const { colors, isDarkMode } = useThemeStore();
 
   const [plan, setPlan] = useState<PlanDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -67,7 +67,6 @@ export default function WorkoutPlanScreen() {
       setError(null);
       const data = await getWorkoutPlanDetail(planId);
 
-      // Transform API response to our format
       const transformedPlan: PlanDetail = {
         id: data.id,
         templateName: data.templateName,
@@ -124,12 +123,32 @@ export default function WorkoutPlanScreen() {
     return groups.sort((a, b) => a.week - b.week);
   }, [plan]);
 
+  // Find next workout (first incomplete day)
+  const nextWorkoutId = useMemo(() => {
+    if (!plan) return null;
+    const nextDay = plan.days.find(d => d.completedAt === null && d.exerciseCount > 0);
+    return nextDay?.id || null;
+  }, [plan]);
+
   const handleDayPress = (dayId: number) => {
     navigation.navigate('WorkoutDay', { dayId });
   };
 
   const completedCount = plan?.days.filter((d) => d.completedAt !== null).length || 0;
-  const totalDays = plan?.days.length || 0;
+  const totalDays = plan?.days.filter(d => d.exerciseCount > 0).length || 0;
+  const progressPercent = totalDays > 0 ? (completedCount / totalDays) * 100 : 0;
+
+  // Shadow helper
+  const cardShadow = isDarkMode ? {
+    borderWidth: 1,
+    borderColor: colors.border,
+  } : {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 2,
+  };
 
   if (loading) {
     return (
@@ -155,56 +174,98 @@ export default function WorkoutPlanScreen() {
   const renderCalendarView = () => (
     <ScrollView
       style={styles.calendarContainer}
+      contentContainerStyle={styles.calendarContent}
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
       }
     >
-      {weekGroups.map(({ week, days: weekDays }) => (
-        <View key={week} style={styles.weekSection}>
-          <Text style={[styles.weekTitle, { color: colors.text }]}>Week {week}</Text>
-          <View style={styles.weekDays}>
-            {weekDays.map((day) => (
-              <TouchableOpacity
-                key={day.id}
-                style={[
-                  styles.dayCard,
-                  { backgroundColor: colors.surface, borderColor: colors.border },
-                  day.completedAt !== null && { backgroundColor: colors.successLight, borderColor: colors.success },
-                  day.exerciseCount === 0 && styles.dayCardEmpty,
-                ]}
-                onPress={() => handleDayPress(day.id)}
-                disabled={day.exerciseCount === 0}
-              >
-                <View style={styles.dayCardHeader}>
-                  <Text style={[styles.dayCardName, { color: colors.text }]} numberOfLines={1}>{day.name}</Text>
-                  {day.completedAt !== null && (
-                    <Text style={[styles.dayCardCheck, { color: colors.success }]}>✓</Text>
-                  )}
-                </View>
-                {day.exercises.length > 0 ? (
-                  <ScrollView
-                    style={styles.exerciseList}
-                    nestedScrollEnabled
-                    showsVerticalScrollIndicator={false}
+      {weekGroups.map(({ week, days: weekDays }) => {
+        const weekCompleted = weekDays.filter(d => d.completedAt !== null).length;
+        const weekTotal = weekDays.filter(d => d.exerciseCount > 0).length;
+
+        return (
+          <View key={week} style={styles.weekSection}>
+            <View style={styles.weekHeader}>
+              <Text style={[styles.weekTitle, { color: colors.text }]}>Week {week}</Text>
+              <Text style={[styles.weekProgress, { color: colors.textMuted }]}>
+                {weekCompleted}/{weekTotal}
+              </Text>
+            </View>
+            <View style={styles.weekDays}>
+              {weekDays.map((day) => {
+                const isNext = day.id === nextWorkoutId;
+                const isCompleted = day.completedAt !== null;
+                const isEmpty = day.exerciseCount === 0;
+
+                return (
+                  <TouchableOpacity
+                    key={day.id}
+                    style={[
+                      styles.dayCard,
+                      { backgroundColor: colors.surface },
+                      cardShadow,
+                      isCompleted && { backgroundColor: colors.successLight },
+                      isNext && { borderWidth: 2, borderColor: colors.primary },
+                      isEmpty && styles.dayCardEmpty,
+                    ]}
+                    onPress={() => handleDayPress(day.id)}
+                    disabled={isEmpty}
+                    activeOpacity={0.8}
                   >
-                    {day.exercises.map((exercise, idx) => (
+                    {isNext && (
+                      <View style={[styles.nextBadge, { backgroundColor: colors.primary }]}>
+                        <Text style={styles.nextBadgeText}>NEXT</Text>
+                      </View>
+                    )}
+                    <View style={styles.dayCardHeader}>
                       <Text
-                        key={exercise.id}
-                        style={[styles.exerciseListItem, { color: colors.textSecondary }]}
+                        style={[
+                          styles.dayCardName,
+                          { color: colors.text },
+                          isCompleted && { color: colors.success }
+                        ]}
                         numberOfLines={1}
                       >
-                        {idx + 1}. {exercise.exerciseName}
+                        {day.name}
                       </Text>
-                    ))}
-                  </ScrollView>
-                ) : (
-                  <Text style={[styles.dayCardPending, { color: colors.textMuted }]}>Not generated</Text>
-                )}
-              </TouchableOpacity>
-            ))}
+                      {isCompleted && (
+                        <Text style={[styles.dayCardCheck, { color: colors.success }]}>✓</Text>
+                      )}
+                    </View>
+                    {day.exercises.length > 0 ? (
+                      <View style={styles.exerciseList}>
+                        {day.exercises.slice(0, 4).map((exercise, idx) => (
+                          <Text
+                            key={exercise.id}
+                            style={[styles.exerciseListItem, { color: colors.textSecondary }]}
+                            numberOfLines={1}
+                          >
+                            • {exercise.exerciseName}
+                          </Text>
+                        ))}
+                        {day.exercises.length > 4 && (
+                          <Text style={[styles.moreExercises, { color: colors.textMuted }]}>
+                            +{day.exercises.length - 4} more
+                          </Text>
+                        )}
+                      </View>
+                    ) : (
+                      <Text style={[styles.dayCardPending, { color: colors.textMuted }]}>
+                        Rest day
+                      </Text>
+                    )}
+                    <View style={[styles.dayCardFooter, { borderTopColor: colors.border }]}>
+                      <Text style={[styles.exerciseCount, { color: colors.textMuted }]}>
+                        {day.exerciseCount} exercises
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
           </View>
-        </View>
-      ))}
+        );
+      })}
     </ScrollView>
   );
 
@@ -215,54 +276,87 @@ export default function WorkoutPlanScreen() {
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
       }
-      renderItem={({ item }) => (
-        <TouchableOpacity
-          style={[
-            styles.card,
-            { backgroundColor: colors.surface },
-            item.completedAt !== null && { backgroundColor: colors.successLight, borderColor: colors.success },
-          ]}
-          onPress={() => handleDayPress(item.id)}
-        >
-          <View style={styles.cardLeft}>
-            <Text style={[styles.dayNumber, { color: colors.textSecondary }]}>
-              Week {item.weekNumber} · Day {item.dayNumber}
-            </Text>
-            <Text style={[styles.dayName, { color: colors.text }]}>{item.name}</Text>
-            <Text style={[styles.exerciseCount, { color: colors.textSecondary }]}>
-              {item.exerciseCount} exercises
-            </Text>
-          </View>
-          <View style={styles.cardRight}>
-            {item.completedAt !== null ? (
-              <Text style={[styles.completedBadge, { color: colors.success }]}>✓</Text>
-            ) : (
-              <Text style={[styles.arrow, { color: colors.primary }]}>→</Text>
-            )}
-          </View>
-        </TouchableOpacity>
-      )}
-      contentContainerStyle={styles.list}
+      renderItem={({ item }) => {
+        const isNext = item.id === nextWorkoutId;
+        const isCompleted = item.completedAt !== null;
+
+        return (
+          <TouchableOpacity
+            style={[
+              styles.listCard,
+              { backgroundColor: colors.surface },
+              cardShadow,
+              isCompleted && { backgroundColor: colors.successLight },
+              isNext && { borderLeftWidth: 4, borderLeftColor: colors.primary },
+            ]}
+            onPress={() => handleDayPress(item.id)}
+            activeOpacity={0.8}
+          >
+            <View style={styles.listCardLeft}>
+              {isNext && (
+                <View style={[styles.nextPill, { backgroundColor: colors.primaryLight }]}>
+                  <Text style={[styles.nextPillText, { color: colors.primary }]}>Next up</Text>
+                </View>
+              )}
+              <Text style={[styles.listDayMeta, { color: colors.textMuted }]}>
+                Week {item.weekNumber} · Day {item.dayNumber}
+              </Text>
+              <Text style={[styles.listDayName, { color: colors.text }]}>{item.name}</Text>
+              <Text style={[styles.listExerciseCount, { color: colors.textSecondary }]}>
+                {item.exerciseCount} exercises
+              </Text>
+            </View>
+            <View style={[styles.listCardRight, { backgroundColor: isCompleted ? colors.success : colors.surfaceAlt }]}>
+              {isCompleted ? (
+                <Text style={styles.listCheck}>✓</Text>
+              ) : (
+                <Text style={[styles.listArrow, { color: colors.primary }]}>→</Text>
+              )}
+            </View>
+          </TouchableOpacity>
+        );
+      }}
+      contentContainerStyle={styles.listContent}
     />
   );
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={[styles.header, { borderBottomColor: colors.border }]}>
+      {/* Header */}
+      <View style={[styles.header, { backgroundColor: colors.surface }]}>
         <View style={styles.headerTop}>
-          <View>
+          <View style={styles.headerLeft}>
             <Text style={[styles.planName, { color: colors.text }]}>{plan.templateName}</Text>
             <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-              {completedCount}/{totalDays} completed · {plan.durationWeeks} weeks
+              {plan.durationWeeks} week program
             </Text>
           </View>
           {plan.isActive && (
             <View style={[styles.activeBadge, { backgroundColor: colors.success }]}>
-              <Text style={[styles.activeBadgeText, { color: colors.buttonText }]}>Active</Text>
+              <Text style={styles.activeBadgeText}>Active</Text>
             </View>
           )}
         </View>
 
+        {/* Progress Bar */}
+        <View style={styles.progressSection}>
+          <View style={styles.progressHeader}>
+            <Text style={[styles.progressLabel, { color: colors.textSecondary }]}>Progress</Text>
+            <Text style={[styles.progressValue, { color: colors.text }]}>
+              {completedCount}/{totalDays} workouts
+            </Text>
+          </View>
+          <View style={[styles.progressBar, { backgroundColor: colors.surfaceAlt }]}>
+            <View
+              style={[
+                styles.progressFill,
+                { backgroundColor: colors.success, width: `${progressPercent}%` }
+              ]}
+            />
+          </View>
+        </View>
+
+        {/* View Toggle */}
         <View style={[styles.viewToggle, { backgroundColor: colors.surfaceAlt }]}>
           <TouchableOpacity
             style={[
@@ -274,11 +368,11 @@ export default function WorkoutPlanScreen() {
             <Text
               style={[
                 styles.toggleText,
-                { color: colors.textSecondary },
+                { color: colors.textMuted },
                 viewMode === 'calendar' && { color: colors.text, fontWeight: '600' },
               ]}
             >
-              Calendar
+              📅 Calendar
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -291,11 +385,11 @@ export default function WorkoutPlanScreen() {
             <Text
               style={[
                 styles.toggleText,
-                { color: colors.textSecondary },
+                { color: colors.textMuted },
                 viewMode === 'list' && { color: colors.text, fontWeight: '600' },
               ]}
             >
-              List
+              📋 List
             </Text>
           </TouchableOpacity>
         </View>
@@ -327,14 +421,15 @@ const styles = StyleSheet.create({
   retryButton: {
     paddingVertical: 12,
     paddingHorizontal: 24,
-    borderRadius: 8,
+    borderRadius: 12,
   },
   retryButtonText: {
     fontWeight: 'bold',
   },
+  // Header
   header: {
-    padding: 20,
-    borderBottomWidth: 1,
+    padding: 16,
+    paddingBottom: 12,
   },
   headerTop: {
     flexDirection: 'row',
@@ -342,53 +437,91 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     marginBottom: 16,
   },
+  headerLeft: {
+    flex: 1,
+  },
   planName: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginBottom: 4,
+    fontSize: 22,
+    fontWeight: '700',
+    marginBottom: 2,
   },
   subtitle: {
     fontSize: 14,
   },
   activeBadge: {
     paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 4,
+    paddingVertical: 5,
+    borderRadius: 8,
   },
   activeBadgeText: {
+    color: '#fff',
     fontSize: 12,
-    fontWeight: 'bold',
+    fontWeight: '700',
   },
+  // Progress
+  progressSection: {
+    marginBottom: 14,
+  },
+  progressHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  progressLabel: {
+    fontSize: 13,
+  },
+  progressValue: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  progressBar: {
+    height: 8,
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: 4,
+  },
+  // Toggle
   viewToggle: {
     flexDirection: 'row',
-    borderRadius: 8,
+    borderRadius: 10,
     padding: 4,
   },
   toggleButton: {
     flex: 1,
     paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 6,
+    borderRadius: 8,
     alignItems: 'center',
   },
   toggleButtonActive: {},
   toggleText: {
-    fontSize: 14,
+    fontSize: 13,
   },
-  toggleTextActive: {
-    fontWeight: '600',
-  },
+  // Calendar View
   calendarContainer: {
     flex: 1,
+  },
+  calendarContent: {
     padding: 16,
+    paddingBottom: 100,
   },
   weekSection: {
-    marginBottom: 20,
+    marginBottom: 24,
+  },
+  weekHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
   },
   weekTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    marginBottom: 12,
+    fontSize: 17,
+    fontWeight: '700',
+  },
+  weekProgress: {
+    fontSize: 13,
   },
   weekDays: {
     flexDirection: 'row',
@@ -397,24 +530,36 @@ const styles = StyleSheet.create({
   },
   dayCard: {
     width: '31%',
-    minHeight: 140,
-    borderRadius: 8,
-    borderWidth: 2,
+    minHeight: 150,
+    borderRadius: 12,
     padding: 10,
+    position: 'relative',
   },
-  dayCardCompleted: {},
   dayCardEmpty: {
     opacity: 0.5,
+  },
+  nextBadge: {
+    position: 'absolute',
+    top: -8,
+    right: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  nextBadgeText: {
+    color: '#fff',
+    fontSize: 9,
+    fontWeight: '700',
   },
   dayCardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 6,
+    marginBottom: 8,
   },
   dayCardName: {
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: '700',
     flex: 1,
   },
   dayCardCheck: {
@@ -423,58 +568,82 @@ const styles = StyleSheet.create({
   },
   exerciseList: {
     flex: 1,
-    maxHeight: 90,
   },
   exerciseListItem: {
     fontSize: 10,
-    lineHeight: 14,
-    marginBottom: 2,
+    lineHeight: 15,
+    marginBottom: 1,
   },
-  dayCardExercises: {
-    fontSize: 11,
-    alignSelf: 'flex-end',
+  moreExercises: {
+    fontSize: 10,
+    marginTop: 2,
+  },
+  dayCardFooter: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    marginTop: 8,
+    paddingTop: 6,
+  },
+  exerciseCount: {
+    fontSize: 10,
   },
   dayCardPending: {
     fontSize: 11,
-    marginTop: 8,
+    flex: 1,
     textAlign: 'center',
+    marginTop: 20,
   },
-  list: {
-    padding: 20,
-  },
-  card: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+  // List View
+  listContent: {
     padding: 16,
-    marginBottom: 12,
-    borderRadius: 8,
-    borderWidth: 2,
-    borderColor: 'transparent',
+    paddingBottom: 100,
   },
-  cardCompleted: {},
-  cardLeft: {
+  listCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    marginBottom: 10,
+    borderRadius: 14,
+  },
+  listCardLeft: {
     flex: 1,
   },
-  dayNumber: {
-    fontSize: 12,
-    marginBottom: 4,
+  nextPill: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    marginBottom: 6,
   },
-  dayName: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 4,
+  nextPillText: {
+    fontSize: 10,
+    fontWeight: '600',
   },
-  exerciseCount: {
-    fontSize: 14,
+  listDayMeta: {
+    fontSize: 11,
+    marginBottom: 2,
   },
-  cardRight: {
-    marginLeft: 16,
+  listDayName: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 2,
   },
-  arrow: {
-    fontSize: 24,
+  listExerciseCount: {
+    fontSize: 13,
   },
-  completedBadge: {
-    fontSize: 28,
+  listCardRight: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 12,
+  },
+  listCheck: {
+    fontSize: 16,
+    color: '#fff',
+  },
+  listArrow: {
+    fontSize: 16,
+    fontWeight: '600',
   },
 });

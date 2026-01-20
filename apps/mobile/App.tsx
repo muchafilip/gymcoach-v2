@@ -1,13 +1,17 @@
 import React, { useEffect } from 'react';
 import { ActivityIndicator, View, StyleSheet, Text } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import AppNavigator from './src/navigation/AppNavigator';
 import { initDatabase } from './src/db/init';
 import { syncReferenceData } from './src/db/sync';
 import { initNetwork } from './src/utils/network';
+import { initPurchases } from './src/services/purchases';
+import { useFeatureStore } from './src/store/featureStore';
 
 export default function App() {
   const [isReady, setIsReady] = React.useState(false);
   const [syncStatus, setSyncStatus] = React.useState('Initializing...');
+  const { syncPremiumStatus } = useFeatureStore();
 
   React.useEffect(() => {
     async function prepare() {
@@ -18,9 +22,21 @@ export default function App() {
         console.log('Database initialized successfully');
 
         // Initialize network monitoring (for offline support)
-        initNetwork();
+        setSyncStatus('Checking network...');
+        await initNetwork();
 
-        // Try to sync reference data from backend
+        // Initialize RevenueCat purchases
+        setSyncStatus('Initializing purchases...');
+        try {
+          await initPurchases();
+          // Sync premium status from RevenueCat
+          await syncPremiumStatus();
+          console.log('Purchases initialized successfully');
+        } catch (purchaseError) {
+          console.warn('Purchases initialization failed, continuing:', purchaseError);
+        }
+
+        // Try to sync reference data from backend (skips if offline)
         try {
           setSyncStatus('Syncing data...');
           await syncReferenceData();
@@ -50,7 +66,11 @@ export default function App() {
     );
   }
 
-  return <AppNavigator />;
+  return (
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <AppNavigator />
+    </GestureHandlerRootView>
+  );
 }
 
 const styles = StyleSheet.create({

@@ -7,6 +7,13 @@ using GymCoach.Api.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Railway/production: listen on PORT environment variable
+var port = Environment.GetEnvironmentVariable("PORT");
+if (!string.IsNullOrEmpty(port))
+{
+    builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
+}
+
 // Add services to the container.
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
@@ -41,6 +48,9 @@ builder.Services.AddScoped<WorkoutGeneratorService>();
 builder.Services.AddScoped<RepSchemeService>();
 builder.Services.AddScoped<SupersetService>();
 builder.Services.AddScoped<PersonalRecordService>();
+builder.Services.AddScoped<XpService>();
+builder.Services.AddScoped<InsightsService>();
+builder.Services.AddScoped<PlanUnlockService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddHttpClient();
 

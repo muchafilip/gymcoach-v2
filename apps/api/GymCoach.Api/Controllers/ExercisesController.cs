@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using GymCoach.Api.Data;
@@ -80,6 +81,7 @@ public class ExercisesController : ControllerBase
         };
     }
 
+    [Authorize]
     [HttpPost]
     public async Task<ActionResult<Exercise>> Create(CreateExerciseDto dto)
     {
@@ -125,6 +127,7 @@ public class ExercisesController : ControllerBase
         return CreatedAtAction(nameof(Get), new { id = exercise.Id }, exercise);
     }
 
+    [Authorize]
     [HttpPut("{id}")]
     public async Task<IActionResult> Update(int id, CreateExerciseDto dto)
     {
@@ -173,6 +176,7 @@ public class ExercisesController : ControllerBase
         return NoContent();
     }
 
+    [Authorize]
     [HttpDelete("{id}")]
     public async Task<IActionResult> Delete(int id)
     {

@@ -4,6 +4,10 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { ActivityIndicator, View } from 'react-native';
 
+// Components
+import GlassTabBar from '../components/GlassTabBar';
+import FloatingActionButton from '../components/FloatingActionButton';
+
 // Screens
 import LoginScreen from '../screens/LoginScreen';
 import OnboardingScreen from '../screens/OnboardingScreen';
@@ -14,25 +18,30 @@ import TemplateBuilderScreen from '../screens/TemplateBuilderScreen';
 import DayBuilderScreen from '../screens/DayBuilderScreen';
 import WorkoutPlanScreen from '../screens/WorkoutPlanScreen';
 import WorkoutDayScreen from '../screens/WorkoutDayScreen';
-import HistoryScreen from '../screens/HistoryScreen';
+import PlanScreen from '../screens/PlanScreen';
+import StatsScreen from '../screens/StatsScreen';
 import SettingsScreen from '../screens/SettingsScreen';
+import PaywallScreen from '../screens/PaywallScreen';
 import { CustomTemplateExercise } from '../types';
 
 // Auth & Theme
 import { useAuthStore } from '../store/authStore';
 import { useThemeStore } from '../store/themeStore';
 import { getUserEquipment } from '../api/equipment';
+import { navigationRef } from './navigationRef';
 
 export type RootStackParamList = {
   Login: undefined;
   Onboarding: undefined;
   MainTabs: undefined;
+  Paywall: undefined;
 };
 
 export type MainTabParamList = {
   Home: undefined;
+  Plan: undefined;
+  Stats: undefined;
   Templates: undefined;
-  History: undefined;
   Settings: undefined;
 };
 
@@ -90,7 +99,7 @@ function TemplatesNavigator() {
       <TemplatesStack.Screen
         name="WorkoutDay"
         component={WorkoutDayScreen}
-        options={{ title: 'Workout' }}
+        options={{ headerShown: false }}
       />
     </TemplatesStack.Navigator>
   );
@@ -100,40 +109,34 @@ function MainTabs() {
   const { colors, isDarkMode } = useThemeStore();
 
   return (
-    <Tab.Navigator
-      screenOptions={{
-        headerStyle: {
-          backgroundColor: colors.card,
-        },
-        headerTintColor: colors.text,
-        tabBarStyle: {
-          backgroundColor: colors.card,
-          borderTopColor: colors.border,
-        },
-        tabBarActiveTintColor: colors.primary,
-        tabBarInactiveTintColor: colors.textMuted,
-      }}
-    >
-      <Tab.Screen name="Home" component={HomeScreen} />
-      <Tab.Screen
-        name="Templates"
-        component={TemplatesNavigator}
-        options={{ headerShown: false }}
-        listeners={({ navigation }) => ({
-          tabPress: (e) => {
-            // Reset the Templates stack to the initial screen when tab is pressed
-            navigation.dispatch(
-              CommonActions.reset({
-                index: 0,
-                routes: [{ name: 'Templates' }],
-              })
-            );
-          },
-        })}
-      />
-      <Tab.Screen name="History" component={HistoryScreen} />
-      <Tab.Screen name="Settings" component={SettingsScreen} />
-    </Tab.Navigator>
+    <View style={{ flex: 1 }}>
+      <Tab.Navigator
+        tabBar={(props) => <GlassTabBar {...props} />}
+        screenOptions={{
+          headerShown: false,
+        }}
+      >
+        <Tab.Screen name="Home" component={HomeScreen} />
+        <Tab.Screen name="Plan" component={PlanScreen} />
+        <Tab.Screen name="Stats" component={StatsScreen} />
+        <Tab.Screen
+          name="Templates"
+          component={TemplatesNavigator}
+          listeners={({ navigation }) => ({
+            tabPress: (e) => {
+              navigation.dispatch(
+                CommonActions.reset({
+                  index: 0,
+                  routes: [{ name: 'Templates' }],
+                })
+              );
+            },
+          })}
+        />
+        <Tab.Screen name="Settings" component={SettingsScreen} />
+      </Tab.Navigator>
+      <FloatingActionButton />
+    </View>
   );
 }
 
@@ -198,7 +201,7 @@ export default function AppNavigator() {
   };
 
   return (
-    <NavigationContainer theme={navigationTheme}>
+    <NavigationContainer theme={navigationTheme} ref={navigationRef}>
       <RootStack.Navigator
         screenOptions={{ headerShown: false }}
         initialRouteName={getInitialRoute()}
@@ -206,6 +209,14 @@ export default function AppNavigator() {
         <RootStack.Screen name="Login" component={LoginScreen} />
         <RootStack.Screen name="Onboarding" component={OnboardingScreen} />
         <RootStack.Screen name="MainTabs" component={MainTabs} />
+        <RootStack.Screen
+          name="Paywall"
+          component={PaywallScreen}
+          options={{
+            presentation: 'modal',
+            headerShown: false,
+          }}
+        />
       </RootStack.Navigator>
     </NavigationContainer>
   );

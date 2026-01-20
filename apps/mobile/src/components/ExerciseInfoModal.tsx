@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,9 +9,13 @@ import {
   Pressable,
   Linking,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { useThemeStore } from '../store/themeStore';
+import { usePreferencesStore } from '../store/preferencesStore';
 import { Exercise } from '../types';
+import { getExerciseHistory, ExerciseHistory } from '../api/workouts';
+import { IfFeatureEnabled } from './PremiumGate';
 
 interface ExerciseInfoModalProps {
   visible: boolean;
@@ -25,6 +29,33 @@ export default function ExerciseInfoModal({
   onClose,
 }: ExerciseInfoModalProps) {
   const { colors } = useThemeStore();
+  const { displayWeight, weightUnit } = usePreferencesStore();
+  const [history, setHistory] = useState<ExerciseHistory[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+
+  useEffect(() => {
+    if (visible && exercise) {
+      loadHistory();
+    }
+  }, [visible, exercise?.id]);
+
+  const loadHistory = async () => {
+    if (!exercise) return;
+    try {
+      setLoadingHistory(true);
+      const data = await getExerciseHistory(exercise.id);
+      setHistory(data.slice(0, 5)); // Last 5 performances
+    } catch (err) {
+      console.error('Error loading exercise history:', err);
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
+
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  };
 
   if (!exercise) return null;
 
@@ -139,6 +170,46 @@ export default function ExerciseInfoModal({
                 </Text>
               </View>
             )}
+
+            <IfFeatureEnabled feature="exerciseHistory">
+              <View style={styles.section}>
+                <Text style={[styles.sectionTitle, { color: colors.textMuted }]}>
+                  RECENT PERFORMANCE
+                </Text>
+                {loadingHistory ? (
+                  <ActivityIndicator size="small" color={colors.primary} style={styles.historyLoader} />
+                ) : history.length === 0 ? (
+                  <Text style={[styles.noHistoryText, { color: colors.textSecondary }]}>
+                    No history yet
+                  </Text>
+                ) : (
+                  <View style={[styles.historyTable, { borderColor: colors.border }]}>
+                    <View style={[styles.historyHeader, { backgroundColor: colors.surfaceAlt, borderBottomColor: colors.border }]}>
+                      <Text style={[styles.historyHeaderCell, styles.dateCol, { color: colors.textMuted }]}>Date</Text>
+                      <Text style={[styles.historyHeaderCell, styles.statsCol, { color: colors.textMuted }]}>Sets</Text>
+                      <Text style={[styles.historyHeaderCell, styles.statsCol, { color: colors.textMuted }]}>Reps</Text>
+                      <Text style={[styles.historyHeaderCell, styles.weightHistoryCol, { color: colors.textMuted }]}>Max</Text>
+                    </View>
+                    {history.map((item) => (
+                      <View key={item.id} style={[styles.historyRow, { borderBottomColor: colors.border }]}>
+                        <Text style={[styles.historyCell, styles.dateCol, { color: colors.text }]}>
+                          {formatDate(item.performedAt)}
+                        </Text>
+                        <Text style={[styles.historyCell, styles.statsCol, { color: colors.text }]}>
+                          {item.totalSets}
+                        </Text>
+                        <Text style={[styles.historyCell, styles.statsCol, { color: colors.text }]}>
+                          {item.totalReps}
+                        </Text>
+                        <Text style={[styles.historyCell, styles.weightHistoryCol, { color: colors.primary, fontWeight: '600' }]}>
+                          {displayWeight(item.maxWeight)}{weightUnit}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
+              </View>
+            </IfFeatureEnabled>
           </ScrollView>
         </View>
       </View>
@@ -235,5 +306,48 @@ const styles = StyleSheet.create({
   instructionsText: {
     fontSize: 15,
     lineHeight: 24,
+  },
+  historyLoader: {
+    marginVertical: 16,
+  },
+  noHistoryText: {
+    fontSize: 14,
+    fontStyle: 'italic',
+  },
+  historyTable: {
+    borderRadius: 8,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  historyHeader: {
+    flexDirection: 'row',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderBottomWidth: 1,
+  },
+  historyHeaderCell: {
+    fontSize: 11,
+    fontWeight: '600',
+    letterSpacing: 0.5,
+  },
+  historyRow: {
+    flexDirection: 'row',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderBottomWidth: 1,
+  },
+  historyCell: {
+    fontSize: 14,
+  },
+  dateCol: {
+    flex: 1.5,
+  },
+  statsCol: {
+    flex: 1,
+    textAlign: 'center',
+  },
+  weightHistoryCol: {
+    flex: 1,
+    textAlign: 'right',
   },
 });

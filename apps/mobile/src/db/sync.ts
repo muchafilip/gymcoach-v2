@@ -2,6 +2,7 @@ import { getDatabase } from './init';
 import { fetchEquipment } from '../api/equipment';
 import { fetchTemplates, fetchTemplateDetail } from '../api/templates';
 import { apiClient } from '../api/client';
+import { isOnline } from '../utils/network';
 
 /**
  * Sync reference data from backend to local SQLite
@@ -9,6 +10,12 @@ import { apiClient } from '../api/client';
  * Order is critical due to foreign key constraints
  */
 export const syncReferenceData = async (): Promise<void> => {
+  // Skip sync if offline
+  if (!isOnline()) {
+    console.log('Offline - skipping reference data sync');
+    return;
+  }
+
   try {
     const db = getDatabase();
     console.log('Starting reference data sync...');
@@ -166,6 +173,12 @@ export const syncReferenceData = async (): Promise<void> => {
  * This includes UserWorkoutPlan, UserWorkoutDay, ExerciseSet
  */
 export const syncUserData = async (): Promise<void> => {
+  // Skip sync if offline
+  if (!isOnline()) {
+    console.log('Offline - skipping user data sync');
+    return;
+  }
+
   try {
     const db = getDatabase();
 
@@ -196,7 +209,9 @@ export const syncUserData = async (): Promise<void> => {
 
           case 'UserWorkoutDay':
             if (item.operation === 'COMPLETE') {
-              await apiClient.post(`/workouts/days/${item.record_id}/complete`);
+              await apiClient.post(`/workouts/days/${item.record_id}/complete`, payload);
+            } else if (item.operation === 'START') {
+              await apiClient.post(`/workouts/days/${item.record_id}/start`);
             }
             break;
 
@@ -285,69 +300,75 @@ export const syncWorkoutPlan = async (planId: number): Promise<void> => {
     const response = await apiClient.get(`/workouts/plans/${planId}`);
     const plan = response.data;
 
-    console.log('Plan data:', plan);
+    // Temporarily disable foreign key checks (reference data may not be synced yet)
+    await db.execAsync('PRAGMA foreign_keys = OFF');
 
-    // Save UserWorkoutPlan
-    await db.runAsync(
-      `INSERT OR REPLACE INTO UserWorkoutPlan (id, user_id, template_id, start_date, duration_weeks, is_active, sync_status)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [plan.id, plan.userId, plan.templateId, plan.startDate, plan.durationWeeks || 4, plan.isActive ? 1 : 0, 'synced']
-    );
-
-    // Save each WorkoutDay with exercises and sets
-    for (const day of plan.days) {
+    try {
+      // Save UserWorkoutPlan
       await db.runAsync(
-        `INSERT OR REPLACE INTO UserWorkoutDay (id, plan_id, day_number, week_number, day_type_id, day_template_id, scheduled_date, completed_at, sync_status)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          day.id,
-          plan.id,
-          day.dayNumber,
-          day.weekNumber || 1,
-          day.dayTemplateId, // day_type_id = dayTemplateId for same-day progression
-          day.dayTemplateId,
-          day.scheduledDate || null,
-          day.completedAt || null,
-          'synced'
-        ]
+        `INSERT OR REPLACE INTO UserWorkoutPlan (id, user_id, template_id, start_date, duration_weeks, is_active, sync_status)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [plan.id, plan.userId, plan.templateId, plan.startDate, plan.durationWeeks || 4, plan.isActive ? 1 : 0, 'synced']
       );
 
-      // Save exercises for this day
-      for (let i = 0; i < day.exercises.length; i++) {
-        const exercise = day.exercises[i];
+      // Save each WorkoutDay with exercises and sets
+      for (const day of plan.days) {
         await db.runAsync(
-          `INSERT OR REPLACE INTO UserExerciseLog (id, workout_day_id, exercise_id, order_index, sync_status)
-           VALUES (?, ?, ?, ?, ?)`,
+          `INSERT OR REPLACE INTO UserWorkoutDay (id, plan_id, day_number, week_number, day_type_id, day_template_id, scheduled_date, completed_at, sync_status)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
-            exercise.id,
             day.id,
-            exercise.exerciseId,
-            i, // Use array index as order_index
+            plan.id,
+            day.dayNumber,
+            day.weekNumber || 1,
+            day.dayTemplateId,
+            day.dayTemplateId,
+            day.scheduledDate || null,
+            day.completedAt || null,
             'synced'
           ]
         );
 
-        // Save sets for this exercise
-        for (const set of exercise.sets) {
+        // Save exercises for this day
+        for (let i = 0; i < day.exercises.length; i++) {
+          const exercise = day.exercises[i];
           await db.runAsync(
-            `INSERT OR REPLACE INTO ExerciseSet (id, exercise_log_id, set_number, target_reps, actual_reps, weight, completed, sync_status)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            `INSERT OR REPLACE INTO UserExerciseLog (id, workout_day_id, exercise_id, order_index, sync_status)
+             VALUES (?, ?, ?, ?, ?)`,
             [
-              set.id,
               exercise.id,
-              set.setNumber,
-              set.targetReps,
-              set.actualReps || null,
-              set.weight || null,
-              set.completed ? 1 : 0,
+              day.id,
+              exercise.exerciseId,
+              i,
               'synced'
             ]
           );
+
+          // Save sets for this exercise
+          for (const set of exercise.sets) {
+            await db.runAsync(
+              `INSERT OR REPLACE INTO ExerciseSet (id, exercise_log_id, set_number, target_reps, actual_reps, weight, completed, sync_status)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+              [
+                set.id,
+                exercise.id,
+                set.setNumber,
+                set.targetReps,
+                set.actualReps || null,
+                set.weight || null,
+                set.completed ? 1 : 0,
+                'synced'
+              ]
+            );
+          }
         }
       }
-    }
 
-    console.log(`✅ Workout plan ${planId} synced successfully`);
+      console.log(`✅ Workout plan ${planId} synced successfully`);
+    } finally {
+      // Re-enable foreign key checks
+      await db.execAsync('PRAGMA foreign_keys = ON');
+    }
   } catch (error) {
     console.error(`Error syncing workout plan ${planId}:`, error);
     throw error;

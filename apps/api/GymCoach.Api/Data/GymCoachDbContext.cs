@@ -28,6 +28,10 @@ public class GymCoachDbContext : DbContext
     public DbSet<ExerciseSet> ExerciseSets => Set<ExerciseSet>();
     public DbSet<UserSuperset> UserSupersets => Set<UserSuperset>();
     public DbSet<PersonalRecord> PersonalRecords => Set<PersonalRecord>();
+    public DbSet<ExercisePerformanceHistory> ExercisePerformanceHistories => Set<ExercisePerformanceHistory>();
+    public DbSet<UserProgress> UserProgress => Set<UserProgress>();
+    public DbSet<XpEvent> XpEvents => Set<XpEvent>();
+    public DbSet<UnlockedPlan> UnlockedPlans => Set<UnlockedPlan>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -185,6 +189,57 @@ public class GymCoachDbContext : DbContext
         modelBuilder.Entity<CustomTemplateExercise>()
             .Property(e => e.DefaultWeight)
             .HasPrecision(10, 2);
+
+        // ExercisePerformanceHistory configuration
+        modelBuilder.Entity<ExercisePerformanceHistory>()
+            .HasIndex(h => new { h.UserId, h.ExerciseId, h.PerformedAt });
+
+        modelBuilder.Entity<ExercisePerformanceHistory>()
+            .Property(h => h.MaxWeight)
+            .HasPrecision(10, 2);
+
+        modelBuilder.Entity<ExercisePerformanceHistory>()
+            .Property(h => h.TotalVolume)
+            .HasPrecision(12, 2);
+
+        modelBuilder.Entity<ExercisePerformanceHistory>()
+            .HasOne(h => h.User)
+            .WithMany()
+            .HasForeignKey(h => h.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<ExercisePerformanceHistory>()
+            .HasOne(h => h.Exercise)
+            .WithMany()
+            .HasForeignKey(h => h.ExerciseId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<ExercisePerformanceHistory>()
+            .HasOne(h => h.UserWorkoutDay)
+            .WithMany()
+            .HasForeignKey(h => h.UserWorkoutDayId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // UserProgress configuration
+        modelBuilder.Entity<UserProgress>()
+            .HasIndex(p => p.UserId)
+            .IsUnique();
+
+        modelBuilder.Entity<UserProgress>()
+            .HasOne(p => p.User)
+            .WithMany()
+            .HasForeignKey(p => p.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // XpEvent configuration
+        modelBuilder.Entity<XpEvent>()
+            .HasIndex(e => new { e.UserId, e.CreatedAt });
+
+        modelBuilder.Entity<XpEvent>()
+            .HasOne(e => e.User)
+            .WithMany()
+            .HasForeignKey(e => e.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
 
         // Seed data
         SeedData.Seed(modelBuilder);

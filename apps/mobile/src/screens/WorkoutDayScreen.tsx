@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -9,9 +9,12 @@ import {
   ActivityIndicator,
   RefreshControl,
   Alert,
+  TextInput,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { useRoute, RouteProp, useNavigation, useFocusEffect } from '@react-navigation/native';
-import { TemplatesStackParamList } from '../navigation/AppNavigator';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   getWorkoutDay,
   updateSet,
@@ -19,17 +22,27 @@ import {
   addSet,
   deleteSet,
   deleteExercise,
+  startWorkoutDay,
+  getProgression,
 } from '../api/workouts';
-import { UserWorkoutDay, UserExercise, ExerciseRole } from '../types';
+import { UserWorkoutDay, UserExercise, ExerciseRole, SetTarget } from '../types';
 import { useThemeStore } from '../store/themeStore';
 import { useFeature } from '../store/featureStore';
+import { usePreferencesStore } from '../store/preferencesStore';
+import { useWorkoutTimerStore } from '../store/workoutTimerStore';
+import { useRestTimerStore } from '../store/restTimerStore';
+import { useProgressStore } from '../store/progressStore';
+import LevelUpModal from '../components/LevelUpModal';
 import NumberPickerModal from '../components/ui/NumberPickerModal';
 import ExercisePicker from '../components/ExercisePicker';
 import ExerciseInfoModal from '../components/ExerciseInfoModal';
 import SupersetModal from '../components/SupersetModal';
+import WorkoutTimer from '../components/WorkoutTimer';
+import RestTimer from '../components/RestTimer';
 import { IfFeatureEnabled } from '../components/PremiumGate';
 import { getExercise } from '../api/exercises';
 import { Exercise } from '../types';
+import { TemplatesStackParamList } from '../navigation/AppNavigator';
 
 type RouteParams = RouteProp<TemplatesStackParamList, 'WorkoutDay'>;
 
@@ -58,18 +71,26 @@ interface PickerState {
 export default function WorkoutDayScreen() {
   const route = useRoute<RouteParams>();
   const navigation = useNavigation();
+  const insets = useSafeAreaInsets();
   const { dayId } = route.params;
-  const { colors } = useThemeStore();
+  const { colors, isDarkMode } = useThemeStore();
+  const { weightUnit, displayWeight, toKg, compactMode } = usePreferencesStore();
+  const { stopTimer } = useWorkoutTimerStore();
+  const { startTimer: startRestTimer, autoStart: restTimerAutoStart } = useRestTimerStore();
+  const { updateFromWorkoutComplete } = useProgressStore();
 
   const [workoutDay, setWorkoutDay] = useState<UserWorkoutDay | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [exercisePickerVisible, setExercisePickerVisible] = useState(false);
+  const [swapExerciseId, setSwapExerciseId] = useState<number | null>(null);
   const [selectedExercise, setSelectedExercise] = useState<Exercise | null>(null);
   const [exerciseInfoVisible, setExerciseInfoVisible] = useState(false);
   const [supersetModalVisible, setSupersetModalVisible] = useState(false);
   const supersetsFeature = useFeature('supersets');
+  const progressionFeature = useFeature('smartProgression');
+  const [progressionData, setProgressionData] = useState<Record<number, SetTarget>>({});
   const [picker, setPicker] = useState<PickerState>({
     visible: false,
     exerciseId: 0,
@@ -78,6 +99,52 @@ export default function WorkoutDayScreen() {
     value: 0,
     title: '',
   });
+
+  // Ref map for inline input focus management: key = "exerciseId-setId-field"
+  const inputRefs = useRef<Map<string, TextInput>>(new Map());
+
+  const getInputKey = (exerciseId: number, setId: number, field: 'reps' | 'weight') =>
+    `${exerciseId}-${setId}-${field}`;
+
+  const focusNextInput = (currentExerciseId: number, currentSetId: number, currentField: 'reps' | 'weight') => {
+    if (!workoutDay) return;
+
+    // Find all sets across all exercises in order
+    const allInputs: { exerciseId: number; setId: number; field: 'reps' | 'weight' }[] = [];
+    workoutDay.exercises.forEach((ex) => {
+      ex.sets.forEach((set) => {
+        allInputs.push({ exerciseId: ex.id, setId: set.id, field: 'reps' });
+        allInputs.push({ exerciseId: ex.id, setId: set.id, field: 'weight' });
+      });
+    });
+
+    // Find current index
+    const currentIndex = allInputs.findIndex(
+      (input) =>
+        input.exerciseId === currentExerciseId &&
+        input.setId === currentSetId &&
+        input.field === currentField
+    );
+
+    // Focus next input if exists
+    if (currentIndex !== -1 && currentIndex < allInputs.length - 1) {
+      const next = allInputs[currentIndex + 1];
+      const nextKey = getInputKey(next.exerciseId, next.setId, next.field);
+      const nextInput = inputRefs.current.get(nextKey);
+      if (nextInput) {
+        nextInput.focus();
+      }
+    }
+  };
+
+  const isLastInput = (exerciseId: number, setId: number, field: 'reps' | 'weight') => {
+    if (!workoutDay) return true;
+    const lastExercise = workoutDay.exercises[workoutDay.exercises.length - 1];
+    if (!lastExercise) return true;
+    const lastSet = lastExercise.sets[lastExercise.sets.length - 1];
+    if (!lastSet) return true;
+    return exerciseId === lastExercise.id && setId === lastSet.id && field === 'weight';
+  };
 
   useFocusEffect(
     useCallback(() => {
@@ -90,6 +157,23 @@ export default function WorkoutDayScreen() {
       setError(null);
       const data = await getWorkoutDay(dayId);
       setWorkoutDay(data);
+
+      // Fetch progression data for each exercise if feature is available
+      if (progressionFeature.isAvailable && data.exercises) {
+        const progressionPromises = data.exercises.map(async (ex) => {
+          const progression = await getProgression(ex.exerciseId);
+          return { exerciseId: ex.exerciseId, progression };
+        });
+
+        const results = await Promise.all(progressionPromises);
+        const progressionMap: Record<number, SetTarget> = {};
+        results.forEach(({ exerciseId, progression }) => {
+          if (progression) {
+            progressionMap[exerciseId] = progression;
+          }
+        });
+        setProgressionData(progressionMap);
+      }
     } catch (err) {
       console.error('Error loading workout day:', err);
       setError('Failed to load workout');
@@ -111,13 +195,17 @@ export default function WorkoutDayScreen() {
     currentValue: number | null | undefined,
     exerciseName: string
   ) => {
+    const displayValue = field === 'weight' && currentValue
+      ? displayWeight(currentValue)
+      : currentValue ?? 0;
+
     setPicker({
       visible: true,
       exerciseId,
       setId,
       field,
-      value: currentValue ?? 0,
-      title: field === 'actualReps' ? 'Reps' : 'Weight (kg)',
+      value: displayValue,
+      title: field === 'actualReps' ? 'Reps' : `Weight (${weightUnit})`,
     });
   };
 
@@ -127,8 +215,11 @@ export default function WorkoutDayScreen() {
 
     if (!workoutDay) return;
 
+    // Convert weight to kg for storage if needed
+    const valueToSave = field === 'weight' ? toKg(value) : value;
+
     try {
-      await updateSet(setId, { [field]: value });
+      await updateSet(setId, { [field]: valueToSave });
 
       setWorkoutDay((prev) => {
         if (!prev) return prev;
@@ -140,7 +231,7 @@ export default function WorkoutDayScreen() {
               ...ex,
               sets: ex.sets.map((set) => {
                 if (set.id !== setId) return set;
-                return { ...set, [field]: value };
+                return { ...set, [field]: valueToSave };
               }),
             };
           }),
@@ -149,6 +240,83 @@ export default function WorkoutDayScreen() {
     } catch (err) {
       console.error('Error updating set:', err);
       Alert.alert('Error', 'Failed to update set');
+    }
+  };
+
+  const handleInlineInputChange = async (
+    exerciseId: number,
+    setId: number,
+    field: 'actualReps' | 'weight',
+    text: string
+  ) => {
+    if (!workoutDay) return;
+
+    // Parse the input - allow empty string (will save as 0 or null)
+    const parsedValue = text === '' ? 0 : parseFloat(text);
+
+    // Validate: only allow non-negative numbers
+    if (isNaN(parsedValue) || parsedValue < 0) return;
+
+    // For reps, ensure whole numbers and reasonable range (0-999)
+    if (field === 'actualReps') {
+      const repsValue = Math.floor(parsedValue);
+      if (repsValue > 999) return;
+
+      // Update local state immediately for responsive UI
+      setWorkoutDay((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          exercises: prev.exercises.map((ex) => {
+            if (ex.id !== exerciseId) return ex;
+            return {
+              ...ex,
+              sets: ex.sets.map((set) => {
+                if (set.id !== setId) return set;
+                return { ...set, actualReps: repsValue || undefined };
+              }),
+            };
+          }),
+        };
+      });
+    }
+
+    // For weight, allow decimals and convert to kg before saving
+    if (field === 'weight') {
+      if (parsedValue > 9999) return; // Max 9999 lbs/kg
+
+      const weightInKg = toKg(parsedValue);
+
+      // Update local state immediately
+      setWorkoutDay((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          exercises: prev.exercises.map((ex) => {
+            if (ex.id !== exerciseId) return ex;
+            return {
+              ...ex,
+              sets: ex.sets.map((set) => {
+                if (set.id !== setId) return set;
+                return { ...set, weight: weightInKg || undefined };
+              }),
+            };
+          }),
+        };
+      });
+    }
+  };
+
+  const handleInlineInputBlur = async (
+    setId: number,
+    field: 'actualReps' | 'weight',
+    kgValue: number | null | undefined
+  ) => {
+    // Save to backend on blur - value is already in kg for weight
+    try {
+      await updateSet(setId, { [field]: kgValue || 0 });
+    } catch (err) {
+      console.error('Error saving set:', err);
     }
   };
 
@@ -174,6 +342,11 @@ export default function WorkoutDayScreen() {
           }),
         };
       });
+
+      // Start rest timer when marking a set as complete (not uncompleting)
+      if (!completed && restTimerAutoStart) {
+        startRestTimer();
+      }
     } catch (err) {
       console.error('Error updating set:', err);
       Alert.alert('Error', 'Failed to update set');
@@ -278,6 +451,18 @@ export default function WorkoutDayScreen() {
     setExercisePickerVisible(false);
   };
 
+  const handleExerciseSwapped = async () => {
+    // Reload the workout day to get the updated exercise with sets
+    setSwapExerciseId(null);
+    setExercisePickerVisible(false);
+    await loadWorkoutDay();
+  };
+
+  const handleSwapExercise = (exerciseId: number) => {
+    setSwapExerciseId(exerciseId);
+    setExercisePickerVisible(true);
+  };
+
   const handleShowExerciseInfo = async (exerciseId: number) => {
     try {
       const exercise = await getExercise(exerciseId);
@@ -289,9 +474,24 @@ export default function WorkoutDayScreen() {
     }
   };
 
+  const handleTimerStart = async () => {
+    try {
+      await startWorkoutDay(dayId);
+    } catch (err) {
+      console.error('Error starting workout:', err);
+    }
+  };
+
   const handleCompleteWorkout = async () => {
     try {
-      await completeWorkoutDay(dayId);
+      const durationSeconds = stopTimer();
+      const xpResult = await completeWorkoutDay(dayId, durationSeconds);
+
+      // Update XP progress if available
+      if (xpResult) {
+        updateFromWorkoutComplete(xpResult);
+      }
+
       setWorkoutDay((prev) => (prev ? { ...prev, completedAt: new Date().toISOString() } : prev));
       navigation.getParent()?.navigate('Home');
     } catch (err) {
@@ -333,25 +533,38 @@ export default function WorkoutDayScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={[styles.header, { borderBottomColor: colors.border }]}>
-        <Text style={[styles.dayName, { color: colors.text }]}>{workoutDay.name}</Text>
-        <Text style={[styles.weekInfo, { color: colors.textSecondary }]}>
-          Week {workoutDay.weekNumber}
-        </Text>
-        {isCompleted && (
+      <View style={[styles.header, compactMode && styles.headerCompact, { borderBottomColor: colors.border }]}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+          <Text style={[styles.backIcon, { color: colors.primary }]}>‹</Text>
+        </TouchableOpacity>
+        <View style={styles.headerCenter}>
+          <Text style={[styles.dayName, compactMode && styles.dayNameCompact, { color: colors.text }]}>{workoutDay.name}</Text>
+          <Text style={[styles.weekInfo, compactMode && styles.weekInfoCompact, { color: colors.textSecondary }]}>
+            Week {workoutDay.weekNumber}
+          </Text>
+        </View>
+        {isCompleted ? (
           <View style={[styles.completedBadge, { backgroundColor: colors.success }]}>
-            <Text style={[styles.completedText, { color: colors.buttonText }]}>Completed</Text>
+            <Text style={[styles.completedText, { color: colors.buttonText }]}>Done</Text>
           </View>
+        ) : (
+          <WorkoutTimer dayId={dayId} onStart={handleTimerStart} inline />
         )}
       </View>
 
-      <ScrollView
+      <KeyboardAvoidingView
         style={styles.content}
-        contentContainerStyle={styles.contentContainer}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
-        }
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 60 : 0}
       >
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={[styles.contentContainer, compactMode && styles.contentContainerCompact]}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
+          }
+          keyboardShouldPersistTaps="handled"
+        >
         {(() => {
           // Group exercises by superset, keeping non-superset exercises separate
           const renderedGroups: Set<number> = new Set();
@@ -414,10 +627,11 @@ export default function WorkoutDayScreen() {
             </IfFeatureEnabled>
           </>
         )}
-      </ScrollView>
+        </ScrollView>
+      </KeyboardAvoidingView>
 
       {!isCompleted && (
-        <View style={[styles.footer, { borderTopColor: colors.border }]}>
+        <View style={[styles.footer, { borderTopColor: colors.border, paddingBottom: 28 }]}>
           <TouchableOpacity
             style={[
               styles.completeButton,
@@ -450,7 +664,12 @@ export default function WorkoutDayScreen() {
         visible={exercisePickerVisible}
         dayId={dayId}
         onExerciseAdded={handleExerciseAdded}
-        onClose={() => setExercisePickerVisible(false)}
+        onClose={() => {
+          setExercisePickerVisible(false);
+          setSwapExerciseId(null);
+        }}
+        swapExerciseId={swapExerciseId ?? undefined}
+        onExerciseSwapped={handleExerciseSwapped}
       />
 
       <ExerciseInfoModal
@@ -470,16 +689,19 @@ export default function WorkoutDayScreen() {
           }}
         />
       )}
+
+      <RestTimer />
+      <LevelUpModal />
     </SafeAreaView>
   );
 
   function renderExerciseCard(exercise: UserExercise, exerciseIndex: number, roleBadge: { text: string; color: string }, inSuperset: boolean) {
     return (
-          <View key={exercise.id} style={[styles.exerciseCard, { backgroundColor: inSuperset ? 'transparent' : colors.surface }]}>
-            <View style={styles.exerciseHeader}>
+          <View key={exercise.id} style={[styles.exerciseCard, compactMode && styles.exerciseCardCompact, { backgroundColor: inSuperset ? 'transparent' : colors.surface }]}>
+            <View style={[styles.exerciseHeader, compactMode && styles.exerciseHeaderCompact]}>
               <View style={styles.exerciseNameContainer}>
                 <View style={styles.exerciseNameRow}>
-                  <Text style={[styles.exerciseName, { color: colors.text }]}>
+                  <Text style={[styles.exerciseName, compactMode && styles.exerciseNameCompact, { color: colors.text }]}>
                     {exerciseIndex + 1}. {exercise.exerciseName}
                   </Text>
                   {exercise.primaryMuscleGroup && (
@@ -500,9 +722,24 @@ export default function WorkoutDayScreen() {
                     <Text style={styles.roleBadgeText}>{roleBadge.text}</Text>
                   </View>
                 )}
+                {progressionFeature.isAvailable && progressionData[exercise.exerciseId] && (
+                  <View style={[styles.progressionHint, { backgroundColor: colors.primaryLight }]}>
+                    <Text style={[styles.progressionText, { color: colors.primary }]}>
+                      {progressionData[exercise.exerciseId].weight > 0
+                        ? `Try ${displayWeight(progressionData[exercise.exerciseId].weight)} × ${progressionData[exercise.exerciseId].targetReps}`
+                        : progressionData[exercise.exerciseId].suggestion}
+                    </Text>
+                  </View>
+                )}
               </View>
               {!isCompleted && (
                 <View style={styles.exerciseActions}>
+                  <TouchableOpacity
+                    style={[styles.actionButton, { backgroundColor: colors.surfaceAlt }]}
+                    onPress={() => handleSwapExercise(exercise.id)}
+                  >
+                    <Text style={[styles.swapIcon, { color: colors.textSecondary }]}>↻</Text>
+                  </TouchableOpacity>
                   <TouchableOpacity
                     style={[styles.actionButton, { backgroundColor: colors.primaryLight }]}
                     onPress={() => handleAddSet(exercise)}
@@ -520,20 +757,20 @@ export default function WorkoutDayScreen() {
             </View>
 
             <View style={styles.setsContainer}>
-              <View style={[styles.setHeader, { borderBottomColor: colors.border }]}>
-                <Text style={[styles.headerCell, styles.setCol, { color: colors.textMuted }]}>
+              <View style={[styles.setHeader, compactMode && styles.setHeaderCompact, { borderBottomColor: colors.border }]}>
+                <Text style={[styles.headerCell, styles.setCol, compactMode && styles.headerCellCompact, { color: colors.textMuted }]}>
                   SET
                 </Text>
-                <Text style={[styles.headerCell, styles.targetCol, { color: colors.textMuted }]}>
+                <Text style={[styles.headerCell, styles.targetCol, compactMode && styles.headerCellCompact, { color: colors.textMuted }]}>
                   TARGET
                 </Text>
-                <Text style={[styles.headerCell, styles.repsCol, { color: colors.textMuted }]}>
+                <Text style={[styles.headerCell, styles.repsCol, compactMode && styles.headerCellCompact, { color: colors.textMuted }]}>
                   REPS
                 </Text>
-                <Text style={[styles.headerCell, styles.weightCol, { color: colors.textMuted }]}>
-                  KG
+                <Text style={[styles.headerCell, styles.weightCol, compactMode && styles.headerCellCompact, { color: colors.textMuted }]}>
+                  {weightUnit.toUpperCase()}
                 </Text>
-                <View style={styles.checkCol} />
+                <View style={[styles.checkCol, compactMode && styles.checkColCompact]} />
                 {!isCompleted && <View style={styles.deleteCol} />}
               </View>
 
@@ -542,62 +779,76 @@ export default function WorkoutDayScreen() {
                   key={set.id}
                   style={[
                     styles.setRow,
+                    compactMode && styles.setRowCompact,
                     set.completed && { backgroundColor: colors.successLight },
                   ]}
                 >
-                  <Text style={[styles.cell, styles.setCol, { color: colors.text }]}>
+                  <Text style={[styles.cell, styles.setCol, { color: colors.text }, compactMode && styles.cellCompact]}>
                     {set.setNumber}
                   </Text>
-                  <Text style={[styles.cell, styles.targetCol, { color: colors.textSecondary }]}>
+                  <Text style={[styles.cell, styles.targetCol, { color: colors.textSecondary }, compactMode && styles.cellCompact]}>
                     {set.targetReps}
                   </Text>
 
-                  <TouchableOpacity
+                  <TextInput
+                    ref={(ref) => {
+                      if (ref) {
+                        inputRefs.current.set(getInputKey(exercise.id, set.id, 'reps'), ref);
+                      }
+                    }}
                     style={[
                       styles.valueCell,
                       styles.repsCol,
-                      { backgroundColor: colors.inputBackground, borderColor: colors.border },
+                      styles.textInput,
+                      compactMode && styles.valueCellCompact,
+                      { backgroundColor: colors.inputBackground, borderColor: colors.border, color: colors.text },
                     ]}
-                    onPress={() =>
-                      openPicker(exercise.id, set.id, 'actualReps', set.actualReps, exercise.exerciseName)
-                    }
-                    disabled={isCompleted}
-                  >
-                    <Text
-                      style={[
-                        styles.valueText,
-                        { color: set.actualReps ? colors.text : colors.textMuted },
-                      ]}
-                    >
-                      {set.actualReps ?? '-'}
-                    </Text>
-                  </TouchableOpacity>
+                    value={set.actualReps?.toString() ?? ''}
+                    placeholder="-"
+                    placeholderTextColor={colors.textMuted}
+                    keyboardType="decimal-pad"
+                    keyboardAppearance={isDarkMode ? 'dark' : 'light'}
+                    returnKeyType={isLastInput(exercise.id, set.id, 'reps') ? 'done' : 'next'}
+                    blurOnSubmit={false}
+                    onChangeText={(text) => handleInlineInputChange(exercise.id, set.id, 'actualReps', text)}
+                    onBlur={() => handleInlineInputBlur(set.id, 'actualReps', set.actualReps)}
+                    onSubmitEditing={() => focusNextInput(exercise.id, set.id, 'reps')}
+                    editable={!isCompleted}
+                    selectTextOnFocus
+                  />
 
-                  <TouchableOpacity
+                  <TextInput
+                    ref={(ref) => {
+                      if (ref) {
+                        inputRefs.current.set(getInputKey(exercise.id, set.id, 'weight'), ref);
+                      }
+                    }}
                     style={[
                       styles.valueCell,
                       styles.weightCol,
-                      { backgroundColor: colors.inputBackground, borderColor: colors.border },
+                      styles.textInput,
+                      compactMode && styles.valueCellCompact,
+                      { backgroundColor: colors.inputBackground, borderColor: colors.border, color: colors.text },
                     ]}
-                    onPress={() =>
-                      openPicker(exercise.id, set.id, 'weight', set.weight, exercise.exerciseName)
-                    }
-                    disabled={isCompleted}
-                  >
-                    <Text
-                      style={[
-                        styles.valueText,
-                        { color: set.weight ? colors.text : colors.textMuted },
-                      ]}
-                    >
-                      {set.weight ?? '-'}
-                    </Text>
-                  </TouchableOpacity>
+                    value={set.weight ? displayWeight(set.weight).toString() : ''}
+                    placeholder="-"
+                    placeholderTextColor={colors.textMuted}
+                    keyboardType="decimal-pad"
+                    keyboardAppearance={isDarkMode ? 'dark' : 'light'}
+                    returnKeyType={isLastInput(exercise.id, set.id, 'weight') ? 'done' : 'next'}
+                    blurOnSubmit={false}
+                    onChangeText={(text) => handleInlineInputChange(exercise.id, set.id, 'weight', text)}
+                    onBlur={() => handleInlineInputBlur(set.id, 'weight', set.weight)}
+                    onSubmitEditing={() => focusNextInput(exercise.id, set.id, 'weight')}
+                    editable={!isCompleted}
+                    selectTextOnFocus
+                  />
 
                   <TouchableOpacity
                     style={[
                       styles.checkbox,
                       styles.checkCol,
+                      compactMode && styles.checkboxCompact,
                       { borderColor: colors.border },
                       set.completed && { backgroundColor: colors.success, borderColor: colors.success },
                     ]}
@@ -605,7 +856,7 @@ export default function WorkoutDayScreen() {
                     disabled={isCompleted}
                   >
                     {set.completed && (
-                      <Text style={[styles.checkmark, { color: colors.buttonText }]}>✓</Text>
+                      <Text style={[styles.checkmark, { color: colors.buttonText }, compactMode && styles.checkmarkCompact]}>✓</Text>
                     )}
                   </TouchableOpacity>
 
@@ -652,27 +903,39 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   header: {
-    padding: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 8,
     borderBottomWidth: 1,
+    gap: 8,
+  },
+  backButton: {
+    padding: 4,
+  },
+  backIcon: {
+    fontSize: 28,
+    fontWeight: '300',
+  },
+  headerCenter: {
+    flex: 1,
   },
   dayName: {
-    fontSize: 22,
+    fontSize: 18,
     fontWeight: 'bold',
   },
   weekInfo: {
-    fontSize: 14,
-    marginTop: 2,
+    fontSize: 12,
+    marginTop: 1,
   },
   completedBadge: {
-    marginTop: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
     borderRadius: 4,
-    alignSelf: 'flex-start',
   },
   completedText: {
     fontWeight: 'bold',
-    fontSize: 12,
+    fontSize: 11,
   },
   content: {
     flex: 1,
@@ -720,6 +983,17 @@ const styles = StyleSheet.create({
     color: '#FFF',
     letterSpacing: 0.5,
   },
+  progressionHint: {
+    alignSelf: 'flex-start',
+    marginTop: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  progressionText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
   infoButton: {
     width: 20,
     height: 20,
@@ -747,6 +1021,10 @@ const styles = StyleSheet.create({
   actionButtonText: {
     fontSize: 18,
     fontWeight: 'bold',
+  },
+  swapIcon: {
+    fontSize: 16,
+    fontWeight: '600',
   },
   setsContainer: {
     borderRadius: 8,
@@ -848,7 +1126,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   footer: {
-    padding: 16,
+    padding: 12,
     borderTopWidth: 1,
   },
   completeButton: {
@@ -866,7 +1144,9 @@ const styles = StyleSheet.create({
   supersetContainer: {
     borderWidth: 2,
     borderRadius: 14,
-    padding: 10,
+    paddingTop: 10,
+    paddingHorizontal: 10,
+    paddingBottom: 0,
     marginBottom: 16,
   },
   supersetHeader: {
@@ -878,5 +1158,66 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     letterSpacing: 1,
+  },
+  // TextInput styles for inline editing
+  scrollView: {
+    flex: 1,
+  },
+  textInput: {
+    textAlign: 'center',
+    fontSize: 15,
+    fontWeight: '500',
+    paddingHorizontal: 4,
+  },
+  // Compact mode styles
+  headerCompact: {
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+  },
+  dayNameCompact: {
+    fontSize: 16,
+  },
+  weekInfoCompact: {
+    fontSize: 11,
+  },
+  contentContainerCompact: {
+    padding: 8,
+  },
+  exerciseCardCompact: {
+    marginBottom: 12,
+    padding: 8,
+    borderRadius: 10,
+  },
+  exerciseHeaderCompact: {
+    marginBottom: 6,
+  },
+  exerciseNameCompact: {
+    fontSize: 14,
+  },
+  setHeaderCompact: {
+    paddingBottom: 4,
+    marginBottom: 2,
+  },
+  headerCellCompact: {
+    fontSize: 9,
+  },
+  setRowCompact: {
+    paddingVertical: 2,
+  },
+  cellCompact: {
+    fontSize: 13,
+  },
+  valueCellCompact: {
+    height: 30,
+  },
+  checkboxCompact: {
+    width: 28,
+    height: 28,
+  },
+  checkColCompact: {
+    width: 28,
+  },
+  checkmarkCompact: {
+    fontSize: 14,
   },
 });

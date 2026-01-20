@@ -2,125 +2,189 @@
 
 A workout tracking app with multi-week progressive overload training plans.
 
+## Quick Reference Commands
+
+### Database (PostgreSQL)
+
+```bash
+# Connect to PostgreSQL
+/opt/homebrew/opt/postgresql@17/bin/psql -h localhost -U fm -d gymcoach
+
+# Common queries
+SELECT * FROM "WorkoutTemplates";
+SELECT * FROM "Exercises" WHERE "Id" > 40;
+SELECT * FROM "CustomTemplateExercises" WHERE "WorkoutDayTemplateId" = 100;
+SELECT * FROM "UserWorkoutPlans" WHERE "IsActive" = true;
+```
+
+### API (.NET Backend)
+
+```bash
+cd /Users/fm/dev/gymcoach-v2/apps/api/GymCoach.Api
+
+# Build
+/opt/homebrew/bin/dotnet build
+
+# Run (port 5104)
+/opt/homebrew/bin/dotnet run
+
+# Create migration
+DOTNET_ROOT=/opt/homebrew/opt/dotnet/libexec /Users/fm/.dotnet/tools/dotnet-ef migrations add MigrationName
+
+# Apply migrations
+DOTNET_ROOT=/opt/homebrew/opt/dotnet/libexec /Users/fm/.dotnet/tools/dotnet-ef database update
+
+# Remove last migration
+DOTNET_ROOT=/opt/homebrew/opt/dotnet/libexec /Users/fm/.dotnet/tools/dotnet-ef migrations remove --force
+```
+
+### Mobile App (React Native/Expo)
+
+```bash
+cd /Users/fm/dev/gymcoach-v2/apps/mobile
+
+# Install dependencies
+/opt/homebrew/bin/npm install
+
+# Type check
+npx tsc --noEmit --skipLibCheck
+
+# Start Expo dev server
+npx expo start
+
+# Prebuild for native (iOS/Android)
+npx expo prebuild
+
+# Install specific packages
+/opt/homebrew/bin/npm install <package-name>
+```
+
 ## Project Structure
 
 ```
 gymcoach-v2/
 ├── apps/
-│   ├── api/          # ASP.NET Core 9 Web API
+│   ├── api/                    # .NET 8 Backend
 │   │   └── GymCoach.Api/
-│   │       ├── Controllers/    # API endpoints
-│   │       ├── Models/         # Entity models
-│   │       ├── Services/       # Business logic
-│   │       ├── Data/           # DbContext
-│   │       └── Migrations/     # EF Core migrations
-│   └── mobile/       # React Native + Expo app
-│       └── src/
-│           ├── api/           # API client functions
-│           ├── db/            # SQLite database (offline-first)
-│           ├── navigation/    # React Navigation setup
-│           ├── screens/       # Screen components
-│           ├── types/         # TypeScript types
-│           └── utils/         # Constants, helpers
-└── packages/         # Shared packages (future)
+│   │       ├── Controllers/    # REST endpoints
+│   │       ├── Services/       # Business logic (WorkoutGeneratorService)
+│   │       ├── Models/         # EF Core entities
+│   │       ├── Data/           # DbContext, SeedData
+│   │       └── Migrations/     # EF migrations
+│   │
+│   └── mobile/                 # React Native + Expo
+│       ├── src/
+│       │   ├── screens/        # Screen components
+│       │   ├── components/     # Shared components (FAB, PremiumGate)
+│       │   ├── api/            # API client functions
+│       │   ├── store/          # Zustand stores (auth, theme, features)
+│       │   ├── db/             # SQLite (offline support)
+│       │   ├── navigation/     # React Navigation
+│       │   ├── services/       # RevenueCat purchases
+│       │   └── types/          # TypeScript types
+│       └── App.tsx
 ```
 
-## Tech Stack
+## Key Files
 
-### Backend
-- ASP.NET Core 9
-- Entity Framework Core
-- PostgreSQL (via Npgsql)
-- Running on port 5104
+| Purpose | File |
+|---------|------|
+| Premium gating | `src/store/featureStore.ts` |
+| Workout generation | `Services/WorkoutGeneratorService.cs` |
+| Template exercises | `Data/SeedData.cs` |
+| RevenueCat setup | `src/services/purchases.ts` |
+| Navigation | `src/navigation/AppNavigator.tsx` |
+| Theme colors | `src/store/themeStore.ts` |
+| Floating button | `src/components/FloatingActionButton.tsx` |
 
-### Mobile
-- React Native with Expo
-- TypeScript
-- expo-sqlite (offline-first)
-- React Navigation (bottom tabs + stack)
-- Axios for API calls
+## Database Schema
 
-## Key Features
+| Table | Purpose |
+|-------|---------|
+| `WorkoutTemplates` | System + user templates (`UserId` null = system) |
+| `WorkoutDayTemplates` | Days within a template |
+| `CustomTemplateExercises` | Pinned exercises (overrides random selection) |
+| `WorkoutDayTemplateMuscle` | Target muscles for random exercise selection |
+| `UserWorkoutPlans` | User's generated plans from templates |
+| `UserWorkoutDays` | Individual workout days |
+| `UserExerciseLogs` | Exercises in a workout day |
+| `ExerciseSets` | Sets within an exercise |
 
-1. **Multi-week workout plans** (4/6/8 weeks)
-   - Pre-generated workout days with weekly progression
-   - Same-day progression (Week 2 Day 1 based on Week 1 Day 1)
+## Common Database Operations
 
-2. **Progressive overload**
-   - 8-15 rep range tracking
-   - +2.5kg when hitting 15 reps
+### Add exercises
+```sql
+INSERT INTO "Exercises" ("Id", "Name", "PrimaryMuscleGroupId", "Description", "Type", "DefaultRole")
+VALUES (45, 'Conventional Deadlift', 2, 'Full-body compound lift', 1, 1);
 
-3. **Plan management**
-   - Create multiple plans
-   - Switch between active plans
-   - Deactivate/delete plans
-
-4. **Exercise substitution**
-   - Swap exercises based on equipment + muscle group
-
-5. **Workout tracking**
-   - Log sets, reps, weight
-   - Mark workouts complete
-   - View history
-
-## Running the Project
-
-### Backend
-```bash
-cd apps/api/GymCoach.Api
-dotnet run
+INSERT INTO "ExerciseEquipment" ("ExerciseId", "EquipmentId")
+VALUES (45, 3);  -- Barbell
 ```
 
-### Mobile
-```bash
-cd apps/mobile
-npm start
+### Pin exercises to template day
+```sql
+INSERT INTO "CustomTemplateExercises" ("WorkoutDayTemplateId", "ExerciseId", "OrderIndex", "Sets", "TargetReps")
+VALUES (100, 45, 0, 4, 5);  -- Deadlift 4x5 as first exercise
 ```
 
-### Database Migrations
-```bash
-cd apps/api/GymCoach.Api
-dotnet ef database update
+### Check template exercises
+```sql
+SELECT cte.*, e."Name"
+FROM "CustomTemplateExercises" cte
+JOIN "Exercises" e ON cte."ExerciseId" = e."Id"
+WHERE cte."WorkoutDayTemplateId" IN (100, 101, 102, 103);
 ```
 
-## Common Tasks
+## RevenueCat Setup
 
-### Add a new EF migration
-```bash
-cd apps/api/GymCoach.Api
-dotnet ef migrations add MigrationName
-dotnet ef database update
-```
+1. Edit `src/services/purchases.ts` line 19
+2. Replace `'YOUR_API_KEY_HERE'` with RevenueCat API key
+3. Create "premium" entitlement in RevenueCat dashboard
+4. Add subscription products in App Store Connect / Google Play Console
 
-### Mobile SQLite migrations
-Edit `apps/mobile/src/db/init.ts` - add migration logic to `runMigrations()` function.
+## Premium Feature Flags
+
+Features in `featureStore.ts`:
+- `supersets` - Premium
+- `advancedStats` - Premium
+- `progressCharts` - Premium
+- `smartProgression` - Premium
+- `xpSystem` - Premium
+- `insights` - Premium
+- `exerciseSwap` - Free
+- `workoutTimer` - Free
+- `restTimer` - Free
+
+`devModeEnabled` bypasses premium checks in dev builds.
+
+## Troubleshooting
+
+### Template not showing correct exercises
+1. Check `CustomTemplateExercises` table for pinned exercises
+2. If empty, generator uses random selection based on `WorkoutDayTemplateMuscle`
+3. Add pinned exercises to control exact selection
+
+### Premium features accessible without subscription
+1. Check `featureStore.ts` - `devModeEnabled` bypasses premium
+2. Check `TemplatesScreen.tsx` - premium template tap should go to Paywall
+
+### Migration ID conflicts
+1. If ID conflicts occur, manually insert with different ID
+2. Update SeedData.cs for future fresh installs
+
+### API not connecting
+1. Check API is running on port 5104
+2. Check mobile `api/client.ts` base URL
+3. Check network connectivity
 
 ## API Endpoints
 
-See `apps/api/README.md` for full API documentation.
-
 Key endpoints:
 - `POST /api/workouts/generate` - Create new workout plan
-- `GET /api/workouts/user/{userId}/active-plan` - Get active plan
-- `GET /api/workouts/user/{userId}/plans` - Get all user plans
-- `POST /api/workouts/plans/{planId}/activate` - Set plan as active
-- `POST /api/workouts/plans/{planId}/deactivate` - Deactivate plan
-- `DELETE /api/workouts/plans/{planId}` - Delete plan
-- `GET /api/workouts/plans/{planId}` - Get plan details
-- `POST /api/workouts/days/{dayId}/complete` - Complete a workout day
-
-## Mobile Screens
-
-- **HomeScreen** - Dashboard with stats, next workout, recent activity
-- **TemplatesScreen** - View templates, manage plans, create new plans
-- **WorkoutPlanScreen** - Calendar/list view of workout days
-- **WorkoutDayScreen** - Log sets, reps, weight for exercises
-- **HistoryScreen** - View completed workouts
-- **SettingsScreen** - App settings
-
-## Development Notes
-
-- Mock user ID is used (see `utils/constants.ts`)
-- SQLite has migration system in `db/init.ts`
-- Backend uses EF Core code-first migrations
-- API client base URL in `api/client.ts`
+- `GET /api/workouts/home` - Dashboard data
+- `GET /api/workouts/active-plan` - Get active plan
+- `GET /api/workouts/plans` - Get all user plans
+- `POST /api/workouts/plans/{id}/activate` - Set plan as active
+- `GET /api/workouts/days/{id}` - Get workout day details
+- `POST /api/workouts/days/{id}/complete` - Complete workout day
+- `PUT /api/workouts/sets/{id}` - Update set (reps, weight)

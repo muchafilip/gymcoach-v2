@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using GymCoach.Api.Data;
@@ -30,6 +31,7 @@ public class MuscleGroupsController : ControllerBase
         return muscleGroup;
     }
 
+    [Authorize]
     [HttpPost]
     public async Task<ActionResult<MuscleGroup>> Create(MuscleGroup muscleGroup)
     {
@@ -38,6 +40,7 @@ public class MuscleGroupsController : ControllerBase
         return CreatedAtAction(nameof(Get), new { id = muscleGroup.Id }, muscleGroup);
     }
 
+    [Authorize]
     [HttpPut("{id}")]
     public async Task<IActionResult> Update(int id, MuscleGroup muscleGroup)
     {
@@ -48,6 +51,7 @@ public class MuscleGroupsController : ControllerBase
         return NoContent();
     }
 
+    [Authorize]
     [HttpDelete("{id}")]
     public async Task<IActionResult> Delete(int id)
     {

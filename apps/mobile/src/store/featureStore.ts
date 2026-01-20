@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { checkPremiumStatus, addPurchaseListener } from '../services/purchases';
 
 // Feature definitions
 export type FeatureFlag =
@@ -8,7 +9,15 @@ export type FeatureFlag =
   | 'repSchemes'
   | 'exerciseSwap'
   | 'advancedStats'
-  | 'workoutHistory';
+  | 'workoutHistory'
+  | 'workoutTimer'
+  | 'exerciseHistory'
+  | 'progressCharts'
+  | 'unitSwitching'
+  | 'restTimer'
+  | 'smartProgression'
+  | 'xpSystem'
+  | 'insights';
 
 interface FeatureConfig {
   enabled: boolean;
@@ -43,6 +52,46 @@ const DEFAULT_FEATURES: Record<FeatureFlag, FeatureConfig> = {
     requiresPremium: false,
     description: 'View past workout history',
   },
+  workoutTimer: {
+    enabled: true,
+    requiresPremium: false,
+    description: 'Track workout duration with pause/resume',
+  },
+  exerciseHistory: {
+    enabled: true,
+    requiresPremium: false,
+    description: 'View past performance per exercise',
+  },
+  progressCharts: {
+    enabled: true,
+    requiresPremium: true,
+    description: 'Visual graphs showing progress over time',
+  },
+  unitSwitching: {
+    enabled: true,
+    requiresPremium: false,
+    description: 'Toggle between kg and lbs globally',
+  },
+  restTimer: {
+    enabled: true,
+    requiresPremium: false,
+    description: 'Countdown timer between sets with sound/vibration alerts',
+  },
+  smartProgression: {
+    enabled: true,
+    requiresPremium: true,
+    description: 'Smart weight and rep suggestions based on past performance',
+  },
+  xpSystem: {
+    enabled: true,
+    requiresPremium: false,
+    description: 'Earn XP, level up, and unlock premium plans',
+  },
+  insights: {
+    enabled: true,
+    requiresPremium: true,
+    description: 'Weekly personalized workout insights and recommendations',
+  },
 };
 
 interface FeatureState {
@@ -60,6 +109,7 @@ interface FeatureState {
   isFeatureAvailable: (feature: FeatureFlag) => boolean;
   requiresPremium: (feature: FeatureFlag) => boolean;
   setPremiumStatus: (isPremium: boolean) => void;
+  syncPremiumStatus: () => Promise<void>;
   toggleDevMode: () => void;
   setFeatureEnabled: (feature: FeatureFlag, enabled: boolean) => void;
   updateFeaturesFromRemote: (features: Partial<Record<FeatureFlag, FeatureConfig>>) => void;
@@ -99,6 +149,22 @@ export const useFeatureStore = create<FeatureState>()(
       // Update premium status (call when user subscription changes)
       setPremiumStatus: (isPremium: boolean) => {
         set({ isPremium });
+      },
+
+      // Sync premium status from RevenueCat
+      syncPremiumStatus: async () => {
+        try {
+          const isPremium = await checkPremiumStatus();
+          set({ isPremium });
+
+          // Set up listener for future changes
+          addPurchaseListener((customerInfo) => {
+            const hasPremium = customerInfo.entitlements.active['premium'] !== undefined;
+            set({ isPremium: hasPremium });
+          });
+        } catch (error) {
+          console.warn('Failed to sync premium status:', error);
+        }
       },
 
       // Toggle dev mode (for testing premium features)

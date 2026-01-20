@@ -17,17 +17,20 @@ public class WorkoutsController : ControllerBase
     private readonly WorkoutGeneratorService _generator;
     private readonly ProgressionService _progression;
     private readonly PersonalRecordService _prService;
+    private readonly XpService _xpService;
 
     public WorkoutsController(
         GymCoachDbContext context,
         WorkoutGeneratorService generator,
         ProgressionService progression,
-        PersonalRecordService prService)
+        PersonalRecordService prService,
+        XpService xpService)
     {
         _context = context;
         _generator = generator;
         _progression = progression;
         _prService = prService;
+        _xpService = xpService;
     }
 
     /// <summary>
@@ -426,21 +429,237 @@ public class WorkoutsController : ControllerBase
     }
 
     /// <summary>
+    /// Start a workout (record start time)
+    /// </summary>
+    [HttpPost("days/{dayId}/start")]
+    public async Task<IActionResult> StartWorkoutDay(int dayId)
+    {
+        var userId = this.GetUserId();
+        var day = await _context.UserWorkoutDays
+            .Include(d => d.UserWorkoutPlan)
+            .FirstOrDefaultAsync(d => d.Id == dayId);
+
+        if (day == null) return NotFound();
+        if (day.UserWorkoutPlan.UserId != userId) return Forbid();
+
+        day.StartedAt = DateTime.UtcNow;
+        await _context.SaveChangesAsync();
+
+        return NoContent();
+    }
+
+    /// <summary>
     /// Mark a workout day as complete
     /// </summary>
     [HttpPost("days/{dayId}/complete")]
-    public async Task<IActionResult> CompleteDay(int dayId)
+    public async Task<IActionResult> CompleteDay(int dayId, [FromBody] CompleteDayRequest? request = null)
     {
-        var day = await _context.UserWorkoutDays.FindAsync(dayId);
+        var userId = this.GetUserId();
+
+        // Check daily workout limit for free users (max 2 per day)
+        var user = await _context.Users.FindAsync(userId);
+        if (user?.SubscriptionStatus == SubscriptionStatus.Free)
+        {
+            var today = DateTime.UtcNow.Date;
+            var completedToday = await _context.UserWorkoutDays
+                .Where(d => d.UserWorkoutPlan.UserId == userId
+                    && d.CompletedAt.HasValue
+                    && d.CompletedAt.Value.Date == today)
+                .CountAsync();
+
+            if (completedToday >= 2)
+            {
+                return BadRequest(new
+                {
+                    error = "daily_limit_reached",
+                    message = "Free users can complete up to 2 workouts per day. Upgrade to Premium for unlimited workouts!"
+                });
+            }
+        }
+
+        var day = await _context.UserWorkoutDays
+            .Include(d => d.UserWorkoutPlan)
+            .Include(d => d.ExerciseLogs)
+                .ThenInclude(el => el.Sets)
+            .FirstOrDefaultAsync(d => d.Id == dayId);
+
         if (day == null) return NotFound();
+        if (day.UserWorkoutPlan.UserId != userId) return Forbid();
 
         day.CompletedAt = DateTime.UtcNow;
+        if (request?.DurationSeconds.HasValue == true)
+        {
+            day.DurationSeconds = request.DurationSeconds;
+        }
+        else if (day.StartedAt.HasValue)
+        {
+            day.DurationSeconds = (int)(DateTime.UtcNow - day.StartedAt.Value).TotalSeconds;
+        }
+
+        await _context.SaveChangesAsync();
+
+        // Record exercise performance history
+        foreach (var log in day.ExerciseLogs)
+        {
+            var completedSets = log.Sets.Where(s => s.Completed).ToList();
+            if (completedSets.Any())
+            {
+                var history = new ExercisePerformanceHistory
+                {
+                    UserId = userId,
+                    ExerciseId = log.ExerciseId,
+                    UserWorkoutDayId = dayId,
+                    TotalSets = completedSets.Count,
+                    TotalReps = completedSets.Sum(s => s.ActualReps ?? 0),
+                    MaxWeight = completedSets.Max(s => s.Weight ?? 0),
+                    TotalVolume = completedSets.Sum(s => (s.Weight ?? 0) * (s.ActualReps ?? 0)),
+                    PerformedAt = DateTime.UtcNow
+                };
+                _context.ExercisePerformanceHistories.Add(history);
+            }
+        }
         await _context.SaveChangesAsync();
 
         // Check if we need to generate next week's exercises
         await _generator.CheckAndGenerateNextWeek(day.UserWorkoutPlanId);
 
-        return NoContent();
+        // Award XP for workout completion
+        var completedSetsCount = day.ExerciseLogs.Sum(el => el.Sets.Count(s => s.Completed));
+        var newPRsCount = 0; // TODO: Count new PRs from PR service if available
+
+        var xpResult = await _xpService.OnWorkoutCompleted(userId, dayId, completedSetsCount, newPRsCount);
+
+        return Ok(new WorkoutCompleteResponse
+        {
+            XpAwarded = xpResult.TotalXpAwarded,
+            TotalXp = xpResult.TotalXp,
+            Level = xpResult.Level,
+            LeveledUp = xpResult.LeveledUp,
+            CurrentStreak = xpResult.CurrentStreak,
+            WorkoutsThisWeek = xpResult.WorkoutsThisWeek,
+            WeeklyGoalReached = xpResult.WeeklyGoalReached,
+            XpToNextLevel = xpResult.XpToNextLevel,
+            NextUnlockLevel = xpResult.NextUnlockLevel,
+            UnlockedPlan = xpResult.UnlockedPlan != null
+                ? new UnlockedPlanDto
+                {
+                    PlanId = xpResult.UnlockedPlan.PlanId,
+                    PlanName = xpResult.UnlockedPlan.PlanName,
+                    UnlockedAtLevel = xpResult.UnlockedPlan.UnlockedAtLevel
+                }
+                : null
+        });
+    }
+
+    /// <summary>
+    /// Get exercise performance history
+    /// </summary>
+    [HttpGet("exercises/{exerciseId}/history")]
+    public async Task<ActionResult<List<ExerciseHistoryDto>>> GetExerciseHistory(int exerciseId, [FromQuery] int limit = 20)
+    {
+        var userId = this.GetUserId();
+        var history = await _context.ExercisePerformanceHistories
+            .Include(h => h.UserWorkoutDay)
+                .ThenInclude(d => d.WorkoutDayTemplate)
+            .Where(h => h.UserId == userId && h.ExerciseId == exerciseId)
+            .OrderByDescending(h => h.PerformedAt)
+            .Take(limit)
+            .Select(h => new ExerciseHistoryDto
+            {
+                Id = h.Id,
+                WorkoutDayName = h.UserWorkoutDay.WorkoutDayTemplate.Name,
+                TotalSets = h.TotalSets,
+                TotalReps = h.TotalReps,
+                MaxWeight = h.MaxWeight,
+                TotalVolume = h.TotalVolume,
+                PerformedAt = h.PerformedAt
+            })
+            .ToListAsync();
+
+        return history;
+    }
+
+    /// <summary>
+    /// Get progress stats for charts
+    /// </summary>
+    [HttpGet("stats/progress")]
+    public async Task<ActionResult<ProgressStatsDto>> GetProgressStats([FromQuery] int days = 30)
+    {
+        var userId = this.GetUserId();
+        var since = DateTime.UtcNow.AddDays(-days);
+
+        // Volume over time (by day)
+        var volumeByDay = await _context.ExercisePerformanceHistories
+            .Where(h => h.UserId == userId && h.PerformedAt >= since)
+            .GroupBy(h => h.PerformedAt.Date)
+            .Select(g => new VolumeDataPoint
+            {
+                Date = g.Key,
+                Volume = g.Sum(h => h.TotalVolume)
+            })
+            .OrderBy(v => v.Date)
+            .ToListAsync();
+
+        // Workout frequency by week - fetch data first, then group in memory
+        var completedDays = await _context.UserWorkoutDays
+            .Where(d => d.UserWorkoutPlan.UserId == userId
+                && d.CompletedAt.HasValue
+                && d.CompletedAt >= since)
+            .Select(d => d.CompletedAt!.Value)
+            .ToListAsync();
+
+        var frequencyByWeek = completedDays
+            .GroupBy(d => new { Year = d.Year, Week = GetWeekOfYear(d) })
+            .Select(g => new FrequencyDataPoint
+            {
+                Year = g.Key.Year,
+                Week = g.Key.Week,
+                Count = g.Count()
+            })
+            .OrderBy(f => f.Year)
+            .ThenBy(f => f.Week)
+            .ToList();
+
+        // Top exercises by volume
+        var topExercises = await _context.ExercisePerformanceHistories
+            .Include(h => h.Exercise)
+            .Where(h => h.UserId == userId && h.PerformedAt >= since)
+            .GroupBy(h => new { h.ExerciseId, h.Exercise.Name })
+            .Select(g => new TopExerciseDto
+            {
+                ExerciseId = g.Key.ExerciseId,
+                ExerciseName = g.Key.Name,
+                TotalVolume = g.Sum(h => h.TotalVolume),
+                SessionCount = g.Count()
+            })
+            .OrderByDescending(e => e.TotalVolume)
+            .Take(10)
+            .ToListAsync();
+
+        // Total stats for period
+        var totalVolume = volumeByDay.Sum(v => v.Volume);
+        var workoutCount = await _context.UserWorkoutDays
+            .CountAsync(d => d.UserWorkoutPlan.UserId == userId
+                && d.CompletedAt.HasValue
+                && d.CompletedAt >= since);
+
+        return new ProgressStatsDto
+        {
+            VolumeOverTime = volumeByDay,
+            FrequencyByWeek = frequencyByWeek,
+            TopExercises = topExercises,
+            TotalVolume = totalVolume,
+            WorkoutCount = workoutCount,
+            Days = days
+        };
+    }
+
+    private static int GetWeekOfYear(DateTime date)
+    {
+        return System.Globalization.CultureInfo.CurrentCulture.Calendar.GetWeekOfYear(
+            date,
+            System.Globalization.CalendarWeekRule.FirstFourDayWeek,
+            DayOfWeek.Monday);
     }
 
     /// <summary>
@@ -658,6 +877,8 @@ public class WorkoutsController : ControllerBase
         var history = await _context.UserWorkoutDays
             .Include(d => d.WorkoutDayTemplate)
             .Include(d => d.ExerciseLogs)
+                .ThenInclude(el => el.Exercise)
+            .Include(d => d.ExerciseLogs)
                 .ThenInclude(el => el.Sets)
             .Where(d => d.UserWorkoutPlan.UserId == userId && d.CompletedAt != null)
             .OrderByDescending(d => d.CompletedAt)
@@ -667,7 +888,17 @@ public class WorkoutsController : ControllerBase
                 DayName = d.WorkoutDayTemplate.Name,
                 CompletedAt = d.CompletedAt!.Value,
                 ExerciseCount = d.ExerciseLogs.Count,
-                TotalSets = d.ExerciseLogs.SelectMany(el => el.Sets).Count(s => s.Completed)
+                TotalSets = d.ExerciseLogs.SelectMany(el => el.Sets).Count(s => s.Completed),
+                Exercises = d.ExerciseLogs.Select(el => new HistoryExerciseDto
+                {
+                    Name = el.Exercise.Name,
+                    Sets = el.Sets.Count(s => s.Completed),
+                    Reps = el.Sets.Where(s => s.Completed)
+                                  .Select(s => s.ActualReps ?? s.TargetReps)
+                                  .FirstOrDefault(),
+                    Weight = el.Sets.Where(s => s.Completed)
+                                    .Max(s => (decimal?)s.Weight) ?? 0
+                }).ToList()
             })
             .ToListAsync();
 
@@ -959,6 +1190,15 @@ public class WorkoutHistoryDto
     public DateTime CompletedAt { get; set; }
     public int ExerciseCount { get; set; }
     public int TotalSets { get; set; }
+    public List<HistoryExerciseDto> Exercises { get; set; } = new();
+}
+
+public class HistoryExerciseDto
+{
+    public string Name { get; set; } = "";
+    public int Sets { get; set; }
+    public int Reps { get; set; }
+    public decimal Weight { get; set; }
 }
 
 public class UpdateSetResponse
@@ -973,4 +1213,74 @@ public class PersonalRecordDto
     public decimal MaxWeight { get; set; }
     public int BestSetReps { get; set; }
     public decimal BestSetWeight { get; set; }
+}
+
+public class CompleteDayRequest
+{
+    public int? DurationSeconds { get; set; }
+}
+
+public class WorkoutCompleteResponse
+{
+    public int XpAwarded { get; set; }
+    public int TotalXp { get; set; }
+    public int Level { get; set; }
+    public bool LeveledUp { get; set; }
+    public int CurrentStreak { get; set; }
+    public int WorkoutsThisWeek { get; set; }
+    public bool WeeklyGoalReached { get; set; }
+    public int XpToNextLevel { get; set; }
+
+    // Plan unlock info
+    public UnlockedPlanDto? UnlockedPlan { get; set; }
+    public int NextUnlockLevel { get; set; }
+}
+
+public class UnlockedPlanDto
+{
+    public int PlanId { get; set; }
+    public string PlanName { get; set; } = "";
+    public int UnlockedAtLevel { get; set; }
+}
+
+public class ExerciseHistoryDto
+{
+    public int Id { get; set; }
+    public string WorkoutDayName { get; set; } = "";
+    public int TotalSets { get; set; }
+    public int TotalReps { get; set; }
+    public decimal MaxWeight { get; set; }
+    public decimal TotalVolume { get; set; }
+    public DateTime PerformedAt { get; set; }
+}
+
+public class ProgressStatsDto
+{
+    public List<VolumeDataPoint> VolumeOverTime { get; set; } = [];
+    public List<FrequencyDataPoint> FrequencyByWeek { get; set; } = [];
+    public List<TopExerciseDto> TopExercises { get; set; } = [];
+    public decimal TotalVolume { get; set; }
+    public int WorkoutCount { get; set; }
+    public int Days { get; set; }
+}
+
+public class VolumeDataPoint
+{
+    public DateTime Date { get; set; }
+    public decimal Volume { get; set; }
+}
+
+public class FrequencyDataPoint
+{
+    public int Year { get; set; }
+    public int Week { get; set; }
+    public int Count { get; set; }
+}
+
+public class TopExerciseDto
+{
+    public int ExerciseId { get; set; }
+    public string ExerciseName { get; set; } = "";
+    public decimal TotalVolume { get; set; }
+    public int SessionCount { get; set; }
 }

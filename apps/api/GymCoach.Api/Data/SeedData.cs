@@ -134,7 +134,12 @@ public static class SeedData
             new Exercise { Id = 41, Name = "Crunches", PrimaryMuscleGroupId = 10, Description = "Basic abdominal crunches", Type = ExerciseType.Isolation, DefaultRole = ExerciseRole.Finisher },
             new Exercise { Id = 42, Name = "Hanging Leg Raises", PrimaryMuscleGroupId = 10, Description = "Hanging from bar leg raises", Type = ExerciseType.Compound, DefaultRole = ExerciseRole.Accessory },
             new Exercise { Id = 43, Name = "Russian Twists", PrimaryMuscleGroupId = 10, Description = "Rotational core exercise", Type = ExerciseType.Isolation, DefaultRole = ExerciseRole.Finisher },
-            new Exercise { Id = 44, Name = "Dead Bug", PrimaryMuscleGroupId = 10, Description = "Anti-rotation core exercise", Type = ExerciseType.Isolation, DefaultRole = ExerciseRole.Finisher }
+            new Exercise { Id = 44, Name = "Dead Bug", PrimaryMuscleGroupId = 10, Description = "Anti-rotation core exercise", Type = ExerciseType.Isolation, DefaultRole = ExerciseRole.Finisher },
+
+            // Additional compound exercises for strength programs
+            new Exercise { Id = 45, Name = "Conventional Deadlift", PrimaryMuscleGroupId = 2, Description = "Full-body compound lift from the floor", Type = ExerciseType.Compound, DefaultRole = ExerciseRole.MainMover },
+            new Exercise { Id = 46, Name = "Front Squat", PrimaryMuscleGroupId = 6, Description = "Barbell squat with front rack position", Type = ExerciseType.Compound, DefaultRole = ExerciseRole.Accessory },
+            new Exercise { Id = 47, Name = "Barbell Hip Thrust", PrimaryMuscleGroupId = 8, Description = "Barbell loaded hip thrust", Type = ExerciseType.Compound, DefaultRole = ExerciseRole.MainMover }
         );
 
         // Exercise Equipment Relationships
@@ -199,7 +204,13 @@ public static class SeedData
             new ExerciseEquipment { ExerciseId = 39, EquipmentId = 6 },  // Seated Calf Raises - Machine
 
             // Pull-up bar for hanging exercises
-            new ExerciseEquipment { ExerciseId = 42, EquipmentId = 4 }   // Hanging Leg Raises - Pull-up Bar
+            new ExerciseEquipment { ExerciseId = 42, EquipmentId = 4 },  // Hanging Leg Raises - Pull-up Bar
+
+            // New strength exercises
+            new ExerciseEquipment { ExerciseId = 45, EquipmentId = 3 },  // Conventional Deadlift - Barbell
+            new ExerciseEquipment { ExerciseId = 46, EquipmentId = 3 },  // Front Squat - Barbell
+            new ExerciseEquipment { ExerciseId = 47, EquipmentId = 3 },  // Barbell Hip Thrust - Barbell
+            new ExerciseEquipment { ExerciseId = 47, EquipmentId = 8 }   // Barbell Hip Thrust - Bench
         );
 
         // Secondary Muscle Groups
@@ -241,7 +252,19 @@ public static class SeedData
             new ExerciseSecondaryMuscle { ExerciseId = 31, MuscleGroupId = 8 },
 
             // Bulgarian Split Squats work quads
-            new ExerciseSecondaryMuscle { ExerciseId = 37, MuscleGroupId = 6 }
+            new ExerciseSecondaryMuscle { ExerciseId = 37, MuscleGroupId = 6 },
+
+            // Conventional Deadlift works hamstrings, glutes, core
+            new ExerciseSecondaryMuscle { ExerciseId = 45, MuscleGroupId = 7 },  // Hamstrings
+            new ExerciseSecondaryMuscle { ExerciseId = 45, MuscleGroupId = 8 },  // Glutes
+            new ExerciseSecondaryMuscle { ExerciseId = 45, MuscleGroupId = 10 }, // Core
+
+            // Front Squat works core, glutes
+            new ExerciseSecondaryMuscle { ExerciseId = 46, MuscleGroupId = 10 }, // Core
+            new ExerciseSecondaryMuscle { ExerciseId = 46, MuscleGroupId = 8 },  // Glutes
+
+            // Barbell Hip Thrust works hamstrings
+            new ExerciseSecondaryMuscle { ExerciseId = 47, MuscleGroupId = 7 }   // Hamstrings
         );
 
         // Workout Templates
@@ -274,6 +297,13 @@ public static class SeedData
                 Description = "High-intensity 3-day program with antagonist supersets for efficient workouts.",
                 IsPremium = true,
                 HasSupersets = true
+            },
+            new WorkoutTemplate
+            {
+                Id = 5,
+                Name = "Minimal Strength 4-Day",
+                Description = "Efficient 4-day strength program. Each day focuses on one main lift (Deadlift, OHP, Squat, Bench) with volume work and accessories.",
+                IsPremium = true
             }
         );
 
@@ -300,7 +330,13 @@ public static class SeedData
             // Superset Training (antagonist pairs)
             new WorkoutDayTemplate { Id = 14, WorkoutTemplateId = 4, DayNumber = 1, Name = "Chest + Back" },
             new WorkoutDayTemplate { Id = 15, WorkoutTemplateId = 4, DayNumber = 2, Name = "Arms (Bi + Tri)" },
-            new WorkoutDayTemplate { Id = 16, WorkoutTemplateId = 4, DayNumber = 3, Name = "Legs (Quads + Hams)" }
+            new WorkoutDayTemplate { Id = 16, WorkoutTemplateId = 4, DayNumber = 3, Name = "Legs (Quads + Hams)" },
+
+            // Minimal Strength 4-Day
+            new WorkoutDayTemplate { Id = 17, WorkoutTemplateId = 5, DayNumber = 1, Name = "Deadlift Day" },
+            new WorkoutDayTemplate { Id = 18, WorkoutTemplateId = 5, DayNumber = 2, Name = "OHP Day" },
+            new WorkoutDayTemplate { Id = 19, WorkoutTemplateId = 5, DayNumber = 3, Name = "Squat Day" },
+            new WorkoutDayTemplate { Id = 20, WorkoutTemplateId = 5, DayNumber = 4, Name = "Bench Day" }
         );
 
         // Target muscles for each day template
@@ -388,7 +424,49 @@ public static class SeedData
 
             // Superset Training - Legs (Quads + Hams) day (antagonist supersets)
             new WorkoutDayTemplateMuscle { WorkoutDayTemplateId = 16, MuscleGroupId = 6, ExerciseCount = 3 },  // Quads x3
-            new WorkoutDayTemplateMuscle { WorkoutDayTemplateId = 16, MuscleGroupId = 7, ExerciseCount = 3 }   // Hamstrings x3
+            new WorkoutDayTemplateMuscle { WorkoutDayTemplateId = 16, MuscleGroupId = 7, ExerciseCount = 3 },  // Hamstrings x3
+
+            // Minimal Strength 4-Day
+            // Deadlift Day - Back (main), Hamstrings (volume), Core (accessory)
+            new WorkoutDayTemplateMuscle { WorkoutDayTemplateId = 17, MuscleGroupId = 2, ExerciseCount = 1 },  // Back x1 (Deadlift)
+            new WorkoutDayTemplateMuscle { WorkoutDayTemplateId = 17, MuscleGroupId = 7, ExerciseCount = 1 },  // Hamstrings x1 (RDL)
+            new WorkoutDayTemplateMuscle { WorkoutDayTemplateId = 17, MuscleGroupId = 10, ExerciseCount = 1 }, // Core x1
+
+            // OHP Day - Shoulders (main), Triceps (volume), Core (accessory)
+            new WorkoutDayTemplateMuscle { WorkoutDayTemplateId = 18, MuscleGroupId = 3, ExerciseCount = 2 },  // Shoulders x2 (OHP + volume)
+            new WorkoutDayTemplateMuscle { WorkoutDayTemplateId = 18, MuscleGroupId = 5, ExerciseCount = 1 },  // Triceps x1
+
+            // Squat Day - Quads (main), Glutes (volume), Core (accessory)
+            new WorkoutDayTemplateMuscle { WorkoutDayTemplateId = 19, MuscleGroupId = 6, ExerciseCount = 2 },  // Quads x2 (Squat + Front Squat)
+            new WorkoutDayTemplateMuscle { WorkoutDayTemplateId = 19, MuscleGroupId = 8, ExerciseCount = 1 },  // Glutes x1
+
+            // Bench Day - Chest (main), Triceps (volume), Shoulders (accessory)
+            new WorkoutDayTemplateMuscle { WorkoutDayTemplateId = 20, MuscleGroupId = 1, ExerciseCount = 2 },  // Chest x2 (Bench + volume)
+            new WorkoutDayTemplateMuscle { WorkoutDayTemplateId = 20, MuscleGroupId = 5, ExerciseCount = 1 }   // Triceps x1
+        );
+
+        // Custom Template Exercises (pinned exercises for Minimal Strength 4-Day)
+        // These override random selection for system templates
+        modelBuilder.Entity<CustomTemplateExercise>().HasData(
+            // Deadlift Day
+            new CustomTemplateExercise { Id = 1, WorkoutDayTemplateId = 17, ExerciseId = 45, OrderIndex = 0, Sets = 4, TargetReps = 5 },  // Conventional Deadlift
+            new CustomTemplateExercise { Id = 2, WorkoutDayTemplateId = 17, ExerciseId = 31, OrderIndex = 1, Sets = 3, TargetReps = 10 }, // Romanian Deadlift
+            new CustomTemplateExercise { Id = 3, WorkoutDayTemplateId = 17, ExerciseId = 44, OrderIndex = 2, Sets = 3, TargetReps = 12 }, // Dead Bug
+
+            // OHP Day
+            new CustomTemplateExercise { Id = 4, WorkoutDayTemplateId = 18, ExerciseId = 15, OrderIndex = 0, Sets = 4, TargetReps = 5 },  // Barbell Overhead Press
+            new CustomTemplateExercise { Id = 5, WorkoutDayTemplateId = 18, ExerciseId = 11, OrderIndex = 1, Sets = 3, TargetReps = 10 }, // DB Shoulder Press
+            new CustomTemplateExercise { Id = 6, WorkoutDayTemplateId = 18, ExerciseId = 23, OrderIndex = 2, Sets = 3, TargetReps = 12 }, // Tricep Pushdowns
+
+            // Squat Day
+            new CustomTemplateExercise { Id = 7, WorkoutDayTemplateId = 19, ExerciseId = 28, OrderIndex = 0, Sets = 4, TargetReps = 5 },  // Barbell Squats
+            new CustomTemplateExercise { Id = 8, WorkoutDayTemplateId = 19, ExerciseId = 46, OrderIndex = 1, Sets = 3, TargetReps = 8 },  // Front Squat
+            new CustomTemplateExercise { Id = 9, WorkoutDayTemplateId = 19, ExerciseId = 47, OrderIndex = 2, Sets = 3, TargetReps = 12 }, // Barbell Hip Thrust
+
+            // Bench Day
+            new CustomTemplateExercise { Id = 10, WorkoutDayTemplateId = 20, ExerciseId = 5, OrderIndex = 0, Sets = 4, TargetReps = 5 },  // Barbell Bench Press
+            new CustomTemplateExercise { Id = 11, WorkoutDayTemplateId = 20, ExerciseId = 3, OrderIndex = 1, Sets = 3, TargetReps = 10 }, // Dumbbell Incline Press
+            new CustomTemplateExercise { Id = 12, WorkoutDayTemplateId = 20, ExerciseId = 24, OrderIndex = 2, Sets = 3, TargetReps = 12 } // Close Grip Bench Press
         );
     }
 }

@@ -18,6 +18,9 @@ public class User
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? LastLoginAt { get; set; }
 
+    // Preferences
+    public string WeightUnit { get; set; } = "kg"; // "kg" or "lbs"
+
     // Navigation
     public ICollection<UserEquipment> OwnedEquipment { get; set; } = [];
     public ICollection<UserWorkoutPlan> WorkoutPlans { get; set; } = [];

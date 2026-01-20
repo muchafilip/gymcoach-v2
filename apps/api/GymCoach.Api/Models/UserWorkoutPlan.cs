@@ -28,6 +28,10 @@ public class UserWorkoutDay
     public DateTime? ScheduledDate { get; set; }
     public DateTime? CompletedAt { get; set; }
 
+    // Timer tracking
+    public DateTime? StartedAt { get; set; }
+    public int? DurationSeconds { get; set; }
+
     // Foreign key
     public int UserWorkoutPlanId { get; set; }
     public UserWorkoutPlan UserWorkoutPlan { get; set; } = null!;

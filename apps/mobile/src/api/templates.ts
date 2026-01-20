@@ -1,12 +1,25 @@
 import { apiClient } from './client';
 import { CustomTemplate, CustomTemplateDay, CustomTemplateExercise, WorkoutTemplate } from '../types';
 import { cachedFetch, invalidateCache } from './offlineSupport';
+import { isOnline } from '../utils/network';
+import { getLocalTemplates } from '../db/localData';
 
 export const fetchTemplates = async (includePremium = true): Promise<WorkoutTemplate[]> => {
-  const response = await apiClient.get<WorkoutTemplate[]>('/workouttemplates', {
-    params: { includePremium },
-  });
-  return response.data;
+  // If online, try API first
+  if (isOnline()) {
+    try {
+      const response = await apiClient.get<WorkoutTemplate[]>('/workouttemplates', {
+        params: { includePremium },
+      });
+      return response.data;
+    } catch (error) {
+      console.warn('[Offline] Templates API failed, using local data');
+    }
+  }
+
+  // Fallback to local SQLite data
+  console.log('[Offline] Loading templates from SQLite');
+  return getLocalTemplates();
 };
 
 export const fetchTemplateDetail = async (id: number) => {

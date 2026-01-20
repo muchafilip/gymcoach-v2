@@ -164,6 +164,55 @@ export interface RecentWorkout {
   exerciseCount: number;
 }
 
+// Progressive Overload types
+export interface SetTarget {
+  targetReps: number;
+  weight: number;
+  durationSeconds?: number;
+  suggestion: string;
+}
+
+// XP & Leveling types
+export interface ProgressSummary {
+  totalXp: number;
+  level: number;
+  xpInCurrentLevel: number;
+  xpNeededForLevel: number;
+  xpToNextLevel: number;
+  currentStreak: number;
+  longestStreak: number;
+  workoutsThisWeek: number;
+  weeklyGoal: number;
+  nextUnlockLevel: number;
+  unlockedPlansCount: number;
+}
+
+export interface UnlockedPlan {
+  planId: number;
+  planName: string;
+  unlockedAtLevel: number;
+}
+
+export interface WorkoutCompleteResponse {
+  xpAwarded: number;
+  totalXp: number;
+  level: number;
+  leveledUp: boolean;
+  currentStreak: number;
+  workoutsThisWeek: number;
+  weeklyGoalReached: boolean;
+  xpToNextLevel: number;
+  nextUnlockLevel: number;
+  unlockedPlan?: UnlockedPlan;
+}
+
+export interface XpEvent {
+  eventType: string;
+  xpAmount: number;
+  description?: string;
+  createdAt: string;
+}
+
 // Rep Scheme types
 export type RepSchemeType =
   | 'Power'

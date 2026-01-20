@@ -15,7 +15,10 @@ import { useUserStore } from '../store/userStore';
 import { useAuthStore } from '../store/authStore';
 import { useSyncStore } from '../store/syncStore';
 import { useThemeStore } from '../store/themeStore';
-import { useFeatureStore } from '../store/featureStore';
+import { useFeatureStore, useFeature } from '../store/featureStore';
+import { usePreferencesStore, WeightUnit } from '../store/preferencesStore';
+import { useRestTimerStore, REST_DURATIONS, formatRestTime } from '../store/restTimerStore';
+import { useOnboardingStore } from '../store/onboardingStore';
 import { performFullSync } from '../db/sync';
 import { getUserEquipment, fetchEquipment } from '../api/equipment';
 import { Equipment } from '../types';
@@ -27,6 +30,20 @@ export default function SettingsScreen() {
   const { lastSyncedAt, setSyncing, setLastSynced } = useSyncStore();
   const { isDarkMode, colors, toggleTheme } = useThemeStore();
   const { devModeEnabled, isPremium, toggleDevMode, setPremiumStatus } = useFeatureStore();
+  const { weightUnit, setWeightUnit, compactMode, setCompactMode } = usePreferencesStore();
+  const unitSwitchingFeature = useFeature('unitSwitching');
+  const restTimerFeature = useFeature('restTimer');
+  const {
+    defaultDuration,
+    setDefaultDuration,
+    soundEnabled,
+    setSoundEnabled,
+    vibrationEnabled,
+    setVibrationEnabled,
+    autoStart,
+    setAutoStart,
+  } = useRestTimerStore();
+  const { resetTour, hasSeenTour } = useOnboardingStore();
   const [localSyncing, setLocalSyncing] = useState(false);
   const [equipmentNames, setEquipmentNames] = useState<string[]>([]);
   const [loadingEquipment, setLoadingEquipment] = useState(true);
@@ -158,7 +175,109 @@ export default function SettingsScreen() {
             thumbColor={colors.card}
           />
         </View>
+        <View style={[styles.card, { borderBottomColor: colors.surfaceAlt }]}>
+          <View>
+            <Text style={[styles.label, { color: colors.textSecondary }]}>Compact Mode</Text>
+            <Text style={[styles.hint, { color: colors.textMuted }]}>Smaller fonts and reduced padding</Text>
+          </View>
+          <Switch
+            value={compactMode}
+            onValueChange={setCompactMode}
+            trackColor={{ false: colors.border, true: colors.primary }}
+            thumbColor={colors.card}
+          />
+        </View>
       </View>
+
+      {unitSwitchingFeature.isAvailable && (
+        <View style={[styles.section, { borderBottomColor: colors.border }]}>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>Units</Text>
+          <View style={[styles.card, { borderBottomColor: colors.surfaceAlt }]}>
+            <Text style={[styles.label, { color: colors.textSecondary }]}>Weight Unit</Text>
+            <View style={styles.unitToggle}>
+              <TouchableOpacity
+                style={[
+                  styles.unitButton,
+                  { backgroundColor: weightUnit === 'kg' ? colors.primary : colors.surface },
+                ]}
+                onPress={() => setWeightUnit('kg')}
+              >
+                <Text style={[
+                  styles.unitButtonText,
+                  { color: weightUnit === 'kg' ? colors.buttonText : colors.text },
+                ]}>
+                  KG
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.unitButton,
+                  { backgroundColor: weightUnit === 'lbs' ? colors.primary : colors.surface },
+                ]}
+                onPress={() => setWeightUnit('lbs')}
+              >
+                <Text style={[
+                  styles.unitButtonText,
+                  { color: weightUnit === 'lbs' ? colors.buttonText : colors.text },
+                ]}>
+                  LBS
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      )}
+
+      {restTimerFeature.isAvailable && (
+        <View style={[styles.section, { borderBottomColor: colors.border }]}>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>Rest Timer</Text>
+          <View style={[styles.card, { borderBottomColor: colors.surfaceAlt }]}>
+            <View>
+              <Text style={[styles.label, { color: colors.textSecondary }]}>Auto-Start</Text>
+              <Text style={[styles.hint, { color: colors.textMuted }]}>Start timer when set completed</Text>
+            </View>
+            <Switch
+              value={autoStart}
+              onValueChange={setAutoStart}
+              trackColor={{ false: colors.border, true: colors.primary }}
+              thumbColor={colors.card}
+            />
+          </View>
+          <View style={[styles.card, { borderBottomColor: colors.surfaceAlt }]}>
+            <Text style={[styles.label, { color: colors.textSecondary }]}>Default Duration</Text>
+            <View style={styles.durationPicker}>
+              {REST_DURATIONS.slice(0, 5).map((duration) => (
+                <TouchableOpacity
+                  key={duration.value}
+                  style={[
+                    styles.durationButton,
+                    { backgroundColor: defaultDuration === duration.value ? colors.primary : colors.surface },
+                  ]}
+                  onPress={() => setDefaultDuration(duration.value)}
+                >
+                  <Text
+                    style={[
+                      styles.durationButtonText,
+                      { color: defaultDuration === duration.value ? colors.buttonText : colors.text },
+                    ]}
+                  >
+                    {duration.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+          <View style={[styles.card, { borderBottomColor: colors.surfaceAlt }]}>
+            <Text style={[styles.label, { color: colors.textSecondary }]}>Vibration</Text>
+            <Switch
+              value={vibrationEnabled}
+              onValueChange={setVibrationEnabled}
+              trackColor={{ false: colors.border, true: colors.primary }}
+              thumbColor={colors.card}
+            />
+          </View>
+        </View>
+      )}
 
       <View style={[styles.section, { borderBottomColor: colors.border }]}>
         <Text style={[styles.sectionTitle, { color: colors.text }]}>Sync</Text>
@@ -227,6 +346,17 @@ export default function SettingsScreen() {
             thumbColor={colors.card}
           />
         </View>
+        <TouchableOpacity
+          style={[styles.editButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
+          onPress={() => {
+            resetTour();
+            Alert.alert('Tour Reset', 'The onboarding tour will show again when you go to the Home screen.');
+          }}
+        >
+          <Text style={[styles.editButtonText, { color: colors.text }]}>
+            Reset Onboarding Tour {hasSeenTour ? '' : '(Not seen yet)'}
+          </Text>
+        </TouchableOpacity>
         {devModeEnabled && (
           <View style={[styles.devModeIndicator, { backgroundColor: colors.warningLight }]}>
             <Text style={[styles.devModeText, { color: colors.warning }]}>
@@ -245,7 +375,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingBottom: 40,
+    paddingBottom: 100,
   },
   section: {
     padding: 20,
@@ -320,5 +450,36 @@ const styles = StyleSheet.create({
   devModeText: {
     fontSize: 12,
     fontWeight: '600',
+  },
+  unitToggle: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  unitButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    minWidth: 60,
+    alignItems: 'center',
+  },
+  unitButtonText: {
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  durationPicker: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  durationButton: {
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 6,
+    minWidth: 44,
+    alignItems: 'center',
+  },
+  durationButtonText: {
+    fontWeight: '600',
+    fontSize: 12,
   },
 });

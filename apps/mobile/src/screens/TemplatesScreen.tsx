@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,8 @@ import {
   Pressable,
   ScrollView,
   Alert,
+  Dimensions,
+  Share,
 } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -24,6 +26,10 @@ import {
   deletePlan,
 } from '../api/workouts';
 import { useThemeStore } from '../store/themeStore';
+import { useFeatureStore } from '../store/featureStore';
+import { useNavigation as useRootNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp as RootNavProp } from '@react-navigation/native-stack';
+import { RootStackParamList } from '../navigation/AppNavigator';
 
 interface UserPlan {
   id: number;
@@ -37,10 +43,14 @@ interface UserPlan {
 type NavigationProp = NativeStackNavigationProp<TemplatesStackParamList, 'TemplatesList'>;
 
 const DURATION_OPTIONS = [4, 6, 8];
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const FEATURED_CARD_WIDTH = SCREEN_WIDTH * 0.75;
 
 export default function TemplatesScreen() {
   const navigation = useNavigation<NavigationProp>();
+  const rootNavigation = useRootNavigation<RootNavProp<RootStackParamList>>();
   const { colors } = useThemeStore();
+  const { isPremium, devModeEnabled } = useFeatureStore();
   const [templates, setTemplates] = useState<WorkoutTemplate[]>([]);
   const [userPlans, setUserPlans] = useState<UserPlan[]>([]);
   const [activePlanId, setActivePlanId] = useState<number | null>(null);
@@ -85,6 +95,12 @@ export default function TemplatesScreen() {
   };
 
   const handleSelectTemplate = (template: WorkoutTemplate) => {
+    // Check if premium template requires subscription
+    if (template.isPremium && !isPremium && !devModeEnabled) {
+      // Navigate to paywall
+      rootNavigation.navigate('Paywall');
+      return;
+    }
     // Show duration modal to create a new plan
     setSelectedTemplate(template);
     setShowDurationModal(true);
@@ -199,6 +215,49 @@ export default function TemplatesScreen() {
     });
   };
 
+  // Featured templates (premium ones)
+  const featuredTemplates = useMemo(() => {
+    return templates.filter(t => t.isPremium);
+  }, [templates]);
+
+  // Non-featured templates
+  const regularTemplates = useMemo(() => {
+    return templates.filter(t => !t.isPremium);
+  }, [templates]);
+
+  // Separate active plan from other plans
+  const activePlan = useMemo(() => {
+    return userPlans.find(p => p.isActive);
+  }, [userPlans]);
+
+  const otherPlans = useMemo(() => {
+    return userPlans.filter(p => !p.isActive);
+  }, [userPlans]);
+
+  // TODO: Replace with actual App Store / Play Store URLs when published
+  const APP_STORE_URL = 'https://apps.apple.com/app/gymcoach/id123456789';
+  const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=com.gymcoach.app';
+
+  const handleSharePlan = async (plan: UserPlan) => {
+    try {
+      const progress = Math.round((plan.completedDays / plan.totalDays) * 100);
+      const shareMessage = `I'm ${progress}% through my "${plan.templateName}" workout program! 💪
+
+${plan.completedDays}/${plan.totalDays} workout days completed.
+
+Join me on GymCoach and start your fitness journey:
+📱 iOS: ${APP_STORE_URL}
+📱 Android: ${PLAY_STORE_URL}`;
+
+      await Share.share({
+        message: shareMessage,
+        title: `My ${plan.templateName} Progress`,
+      });
+    } catch (error) {
+      console.error('Error sharing:', error);
+    }
+  };
+
   if (loading === true) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -210,47 +269,50 @@ export default function TemplatesScreen() {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        {/* My Plans Section */}
-        {userPlans.length > 0 && (
-          <View style={styles.section}>
-            <Text style={[styles.sectionTitle, { color: colors.text }]}>My Plans</Text>
-            {userPlans.map((plan) => (
-              <TouchableOpacity
-                key={plan.id}
-                style={[
-                  styles.planCard,
-                  { backgroundColor: colors.surface, borderColor: colors.border },
-                  plan.isActive && { backgroundColor: colors.successLight, borderColor: colors.success },
-                ]}
-                onPress={() => handlePlanPress(plan)}
-              >
-                <View style={styles.planCardContent}>
-                  <View style={styles.planCardLeft}>
-                    <Text style={[styles.planCardTitle, { color: colors.text }]}>{plan.templateName}</Text>
-                    <Text style={[styles.planCardMeta, { color: colors.textSecondary }]}>
-                      Started {formatDate(plan.startDate)} · {plan.completedDays}/{plan.totalDays} days
+        {/* Featured Section */}
+        {featuredTemplates.length > 0 && (
+          <View style={styles.featuredSection}>
+            <View style={styles.featuredHeader}>
+              <Text style={[styles.featuredTitle, { color: colors.text }]}>Featured Programs</Text>
+              <Text style={[styles.featuredSubtitle, { color: colors.textSecondary }]}>Premium</Text>
+            </View>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.featuredScroll}
+              decelerationRate="fast"
+              snapToInterval={FEATURED_CARD_WIDTH + 12}
+            >
+              {featuredTemplates.map((template) => (
+                <TouchableOpacity
+                  key={template.id}
+                  style={[styles.featuredCard, { backgroundColor: colors.primary, width: FEATURED_CARD_WIDTH }]}
+                  onPress={() => handleSelectTemplate(template)}
+                  activeOpacity={0.9}
+                >
+                  <View style={styles.featuredCardTop}>
+                    <Text style={styles.featuredEmoji}>
+                      {template.name.includes('Strength') ? '💪' :
+                       template.name.includes('Push') ? '🏋️' :
+                       template.name.includes('Upper') ? '👊' :
+                       template.name.includes('Superset') ? '⚡' : '🔥'}
                     </Text>
-                  </View>
-                  {plan.isActive && (
-                    <View style={[styles.activeBadge, { backgroundColor: colors.success }]}>
-                      <Text style={[styles.activeBadgeText, { color: colors.buttonText }]}>Active</Text>
+                    <View style={[styles.premiumBadge, { backgroundColor: 'rgba(255,255,255,0.2)' }]}>
+                      <Text style={styles.premiumBadgeText}>PRO</Text>
                     </View>
-                  )}
-                </View>
-                <View style={[styles.progressBar, { backgroundColor: colors.border }]}>
-                  <View
-                    style={[
-                      styles.progressFill,
-                      { width: `${(plan.completedDays / plan.totalDays) * 100}%`, backgroundColor: colors.success },
-                    ]}
-                  />
-                </View>
-              </TouchableOpacity>
-            ))}
+                  </View>
+                  <Text style={styles.featuredCardTitle}>{template.name}</Text>
+                  <Text style={styles.featuredCardDesc} numberOfLines={2}>{template.description}</Text>
+                  <View style={styles.featuredCardFooter}>
+                    <Text style={styles.featuredCardCta}>Start Program →</Text>
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
           </View>
         )}
 
-        {/* My Templates Section */}
+        {/* My Custom Templates - Always visible at top */}
         <View style={styles.section}>
           <TouchableOpacity
             style={[styles.myTemplatesCard, { backgroundColor: colors.surface, borderColor: colors.primary }]}
@@ -265,6 +327,90 @@ export default function TemplatesScreen() {
             <Text style={[styles.myTemplatesArrow, { color: colors.primary }]}>→</Text>
           </TouchableOpacity>
         </View>
+
+        {/* Active Plan Section - Highlighted */}
+        {activePlan && (
+          <View style={styles.section}>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Active Plan</Text>
+            <TouchableOpacity
+              style={[
+                styles.planCard,
+                { backgroundColor: colors.successLight, borderColor: colors.success },
+              ]}
+              onPress={() => handlePlanPress(activePlan)}
+            >
+              <View style={styles.planCardContent}>
+                <View style={styles.planCardLeft}>
+                  <Text style={[styles.planCardTitle, { color: colors.text }]}>{activePlan.templateName}</Text>
+                  <Text style={[styles.planCardMeta, { color: colors.textSecondary }]}>
+                    Started {formatDate(activePlan.startDate)} · {activePlan.completedDays}/{activePlan.totalDays} days
+                  </Text>
+                </View>
+                <View style={styles.planCardRight}>
+                  <View style={[styles.activeBadge, { backgroundColor: colors.success }]}>
+                    <Text style={[styles.activeBadgeText, { color: colors.buttonText }]}>Active</Text>
+                  </View>
+                  <TouchableOpacity
+                    style={[styles.shareButton, { backgroundColor: colors.surfaceAlt }]}
+                    onPress={() => handleSharePlan(activePlan)}
+                  >
+                    <Text style={styles.shareIcon}>📤</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+              <View style={[styles.progressBar, { backgroundColor: colors.border }]}>
+                <View
+                  style={[
+                    styles.progressFill,
+                    { width: `${(activePlan.completedDays / activePlan.totalDays) * 100}%`, backgroundColor: colors.success },
+                  ]}
+                />
+              </View>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Other Plans Section */}
+        {otherPlans.length > 0 && (
+          <View style={styles.section}>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Other Plans</Text>
+            {otherPlans.map((plan) => (
+              <TouchableOpacity
+                key={plan.id}
+                style={[
+                  styles.planCard,
+                  { backgroundColor: colors.surface, borderColor: colors.border },
+                ]}
+                onPress={() => handlePlanPress(plan)}
+              >
+                <View style={styles.planCardContent}>
+                  <View style={styles.planCardLeft}>
+                    <Text style={[styles.planCardTitle, { color: colors.text }]}>{plan.templateName}</Text>
+                    <Text style={[styles.planCardMeta, { color: colors.textSecondary }]}>
+                      Started {formatDate(plan.startDate)} · {plan.completedDays}/{plan.totalDays} days
+                    </Text>
+                  </View>
+                  <View style={styles.planCardRight}>
+                    <TouchableOpacity
+                      style={[styles.shareButton, { backgroundColor: colors.surfaceAlt }]}
+                      onPress={() => handleSharePlan(plan)}
+                    >
+                      <Text style={styles.shareIcon}>📤</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+                <View style={[styles.progressBar, { backgroundColor: colors.border }]}>
+                  <View
+                    style={[
+                      styles.progressFill,
+                      { width: `${(plan.completedDays / plan.totalDays) * 100}%`, backgroundColor: colors.success },
+                    ]}
+                  />
+                </View>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
 
         {/* Templates Section */}
         <View style={styles.section}>
@@ -404,10 +550,80 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    padding: 20,
+    paddingVertical: 20,
   },
+  // Featured Section
+  featuredSection: {
+    marginBottom: 24,
+  },
+  featuredHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    marginBottom: 12,
+  },
+  featuredTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+  },
+  featuredSubtitle: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  featuredScroll: {
+    paddingLeft: 20,
+    paddingRight: 8,
+  },
+  featuredCard: {
+    borderRadius: 16,
+    padding: 18,
+    marginRight: 12,
+    minHeight: 160,
+    justifyContent: 'space-between',
+  },
+  featuredCardTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  featuredEmoji: {
+    fontSize: 32,
+  },
+  premiumBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  premiumBadgeText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  featuredCardTitle: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '700',
+    marginTop: 12,
+  },
+  featuredCardDesc: {
+    color: 'rgba(255,255,255,0.8)',
+    fontSize: 13,
+    marginTop: 4,
+    lineHeight: 18,
+  },
+  featuredCardFooter: {
+    marginTop: 12,
+  },
+  featuredCardCta: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  // Regular sections
   section: {
     marginBottom: 24,
+    paddingHorizontal: 20,
   },
   sectionTitle: {
     fontSize: 18,
@@ -430,6 +646,11 @@ const styles = StyleSheet.create({
   planCardLeft: {
     flex: 1,
   },
+  planCardRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   planCardTitle: {
     fontSize: 16,
     fontWeight: 'bold',
@@ -437,6 +658,16 @@ const styles = StyleSheet.create({
   },
   planCardMeta: {
     fontSize: 12,
+  },
+  shareButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  shareIcon: {
+    fontSize: 14,
   },
   activeBadge: {
     paddingHorizontal: 8,

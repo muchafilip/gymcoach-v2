@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import { useThemeStore } from '../store/themeStore';
 import { useFeature, FeatureFlag } from '../store/featureStore';
 
@@ -18,8 +19,13 @@ export default function PremiumGate({
   inline = false,
   message,
 }: PremiumGateProps) {
+  const navigation = useNavigation<any>();
   const { colors } = useThemeStore();
   const { isAvailable, showPremiumGate } = useFeature(feature);
+
+  const handleUpgrade = () => {
+    navigation.navigate('Paywall');
+  };
 
   // Feature is available, render children
   if (isAvailable) {
@@ -56,10 +62,7 @@ export default function PremiumGate({
       </Text>
       <TouchableOpacity
         style={[styles.upgradeButton, { backgroundColor: colors.primary }]}
-        onPress={() => {
-          // TODO: Navigate to subscription screen
-          console.log('Navigate to premium');
-        }}
+        onPress={handleUpgrade}
       >
         <Text style={[styles.upgradeButtonText, { color: colors.buttonText }]}>
           Upgrade Now

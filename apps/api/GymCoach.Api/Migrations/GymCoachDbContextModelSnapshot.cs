@@ -59,6 +59,116 @@ namespace GymCoach.Api.Migrations
                     b.HasIndex("WorkoutDayTemplateId");
 
                     b.ToTable("CustomTemplateExercises");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1,
+                            ExerciseId = 45,
+                            OrderIndex = 0,
+                            Sets = 4,
+                            TargetReps = 5,
+                            WorkoutDayTemplateId = 17
+                        },
+                        new
+                        {
+                            Id = 2,
+                            ExerciseId = 31,
+                            OrderIndex = 1,
+                            Sets = 3,
+                            TargetReps = 10,
+                            WorkoutDayTemplateId = 17
+                        },
+                        new
+                        {
+                            Id = 3,
+                            ExerciseId = 44,
+                            OrderIndex = 2,
+                            Sets = 3,
+                            TargetReps = 12,
+                            WorkoutDayTemplateId = 17
+                        },
+                        new
+                        {
+                            Id = 4,
+                            ExerciseId = 15,
+                            OrderIndex = 0,
+                            Sets = 4,
+                            TargetReps = 5,
+                            WorkoutDayTemplateId = 18
+                        },
+                        new
+                        {
+                            Id = 5,
+                            ExerciseId = 11,
+                            OrderIndex = 1,
+                            Sets = 3,
+                            TargetReps = 10,
+                            WorkoutDayTemplateId = 18
+                        },
+                        new
+                        {
+                            Id = 6,
+                            ExerciseId = 23,
+                            OrderIndex = 2,
+                            Sets = 3,
+                            TargetReps = 12,
+                            WorkoutDayTemplateId = 18
+                        },
+                        new
+                        {
+                            Id = 7,
+                            ExerciseId = 28,
+                            OrderIndex = 0,
+                            Sets = 4,
+                            TargetReps = 5,
+                            WorkoutDayTemplateId = 19
+                        },
+                        new
+                        {
+                            Id = 8,
+                            ExerciseId = 46,
+                            OrderIndex = 1,
+                            Sets = 3,
+                            TargetReps = 8,
+                            WorkoutDayTemplateId = 19
+                        },
+                        new
+                        {
+                            Id = 9,
+                            ExerciseId = 47,
+                            OrderIndex = 2,
+                            Sets = 3,
+                            TargetReps = 12,
+                            WorkoutDayTemplateId = 19
+                        },
+                        new
+                        {
+                            Id = 10,
+                            ExerciseId = 5,
+                            OrderIndex = 0,
+                            Sets = 4,
+                            TargetReps = 5,
+                            WorkoutDayTemplateId = 20
+                        },
+                        new
+                        {
+                            Id = 11,
+                            ExerciseId = 3,
+                            OrderIndex = 1,
+                            Sets = 3,
+                            TargetReps = 10,
+                            WorkoutDayTemplateId = 20
+                        },
+                        new
+                        {
+                            Id = 12,
+                            ExerciseId = 24,
+                            OrderIndex = 2,
+                            Sets = 3,
+                            TargetReps = 12,
+                            WorkoutDayTemplateId = 20
+                        });
                 });
 
             modelBuilder.Entity("GymCoach.Api.Models.Equipment", b =>
@@ -569,6 +679,33 @@ namespace GymCoach.Api.Migrations
                             Name = "Dead Bug",
                             PrimaryMuscleGroupId = 10,
                             Type = 2
+                        },
+                        new
+                        {
+                            Id = 45,
+                            DefaultRole = 1,
+                            Description = "Full-body compound lift from the floor",
+                            Name = "Conventional Deadlift",
+                            PrimaryMuscleGroupId = 2,
+                            Type = 1
+                        },
+                        new
+                        {
+                            Id = 46,
+                            DefaultRole = 2,
+                            Description = "Barbell squat with front rack position",
+                            Name = "Front Squat",
+                            PrimaryMuscleGroupId = 6,
+                            Type = 1
+                        },
+                        new
+                        {
+                            Id = 47,
+                            DefaultRole = 1,
+                            Description = "Barbell loaded hip thrust",
+                            Name = "Barbell Hip Thrust",
+                            PrimaryMuscleGroupId = 8,
+                            Type = 1
                         });
                 });
 
@@ -836,7 +973,72 @@ namespace GymCoach.Api.Migrations
                         {
                             ExerciseId = 42,
                             EquipmentId = 4
+                        },
+                        new
+                        {
+                            ExerciseId = 45,
+                            EquipmentId = 3
+                        },
+                        new
+                        {
+                            ExerciseId = 46,
+                            EquipmentId = 3
+                        },
+                        new
+                        {
+                            ExerciseId = 47,
+                            EquipmentId = 3
+                        },
+                        new
+                        {
+                            ExerciseId = 47,
+                            EquipmentId = 8
                         });
+                });
+
+            modelBuilder.Entity("GymCoach.Api.Models.ExercisePerformanceHistory", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("ExerciseId")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("MaxWeight")
+                        .HasPrecision(10, 2)
+                        .HasColumnType("numeric(10,2)");
+
+                    b.Property<DateTime>("PerformedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("TotalReps")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("TotalSets")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("TotalVolume")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("numeric(12,2)");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("UserWorkoutDayId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ExerciseId");
+
+                    b.HasIndex("UserWorkoutDayId");
+
+                    b.HasIndex("UserId", "ExerciseId", "PerformedAt");
+
+                    b.ToTable("ExercisePerformanceHistories");
                 });
 
             modelBuilder.Entity("GymCoach.Api.Models.ExerciseSecondaryMuscle", b =>
@@ -948,6 +1150,36 @@ namespace GymCoach.Api.Migrations
                         {
                             ExerciseId = 37,
                             MuscleGroupId = 6
+                        },
+                        new
+                        {
+                            ExerciseId = 45,
+                            MuscleGroupId = 7
+                        },
+                        new
+                        {
+                            ExerciseId = 45,
+                            MuscleGroupId = 8
+                        },
+                        new
+                        {
+                            ExerciseId = 45,
+                            MuscleGroupId = 10
+                        },
+                        new
+                        {
+                            ExerciseId = 46,
+                            MuscleGroupId = 10
+                        },
+                        new
+                        {
+                            ExerciseId = 46,
+                            MuscleGroupId = 8
+                        },
+                        new
+                        {
+                            ExerciseId = 47,
+                            MuscleGroupId = 7
                         });
                 });
 
@@ -1360,6 +1592,35 @@ namespace GymCoach.Api.Migrations
                         });
                 });
 
+            modelBuilder.Entity("GymCoach.Api.Models.UnlockedPlan", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("UnlockedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("UnlockedAtLevel")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("WorkoutTemplateId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("WorkoutTemplateId");
+
+                    b.ToTable("UnlockedPlans");
+                });
+
             modelBuilder.Entity("GymCoach.Api.Models.User", b =>
                 {
                     b.Property<int>("Id")
@@ -1398,6 +1659,10 @@ namespace GymCoach.Api.Migrations
 
                     b.Property<int>("SubscriptionStatus")
                         .HasColumnType("integer");
+
+                    b.Property<string>("WeightUnit")
+                        .IsRequired()
+                        .HasColumnType("text");
 
                     b.HasKey("Id");
 
@@ -1462,6 +1727,55 @@ namespace GymCoach.Api.Migrations
                     b.ToTable("UserExerciseLogs");
                 });
 
+            modelBuilder.Entity("GymCoach.Api.Models.UserProgress", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("CurrentStreak")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("LastWorkoutDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Level")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("LongestStreak")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("TotalXp")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("WeekStartDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("WeeklyGoal")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("WorkoutsThisWeek")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId")
+                        .IsUnique();
+
+                    b.ToTable("UserProgress");
+                });
+
             modelBuilder.Entity("GymCoach.Api.Models.UserSuperset", b =>
                 {
                     b.Property<int>("Id")
@@ -1505,7 +1819,13 @@ namespace GymCoach.Api.Migrations
                     b.Property<int>("DayTypeId")
                         .HasColumnType("integer");
 
+                    b.Property<int?>("DurationSeconds")
+                        .HasColumnType("integer");
+
                     b.Property<DateTime?>("ScheduledDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("StartedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<int>("UserWorkoutPlanId")
@@ -1697,6 +2017,34 @@ namespace GymCoach.Api.Migrations
                             DayNumber = 3,
                             Name = "Legs (Quads + Hams)",
                             WorkoutTemplateId = 4
+                        },
+                        new
+                        {
+                            Id = 17,
+                            DayNumber = 1,
+                            Name = "Deadlift Day",
+                            WorkoutTemplateId = 5
+                        },
+                        new
+                        {
+                            Id = 18,
+                            DayNumber = 2,
+                            Name = "OHP Day",
+                            WorkoutTemplateId = 5
+                        },
+                        new
+                        {
+                            Id = 19,
+                            DayNumber = 3,
+                            Name = "Squat Day",
+                            WorkoutTemplateId = 5
+                        },
+                        new
+                        {
+                            Id = 20,
+                            DayNumber = 4,
+                            Name = "Bench Day",
+                            WorkoutTemplateId = 5
                         });
                 });
 
@@ -2071,6 +2419,60 @@ namespace GymCoach.Api.Migrations
                             WorkoutDayTemplateId = 16,
                             MuscleGroupId = 7,
                             ExerciseCount = 3
+                        },
+                        new
+                        {
+                            WorkoutDayTemplateId = 17,
+                            MuscleGroupId = 2,
+                            ExerciseCount = 1
+                        },
+                        new
+                        {
+                            WorkoutDayTemplateId = 17,
+                            MuscleGroupId = 7,
+                            ExerciseCount = 1
+                        },
+                        new
+                        {
+                            WorkoutDayTemplateId = 17,
+                            MuscleGroupId = 10,
+                            ExerciseCount = 1
+                        },
+                        new
+                        {
+                            WorkoutDayTemplateId = 18,
+                            MuscleGroupId = 3,
+                            ExerciseCount = 2
+                        },
+                        new
+                        {
+                            WorkoutDayTemplateId = 18,
+                            MuscleGroupId = 5,
+                            ExerciseCount = 1
+                        },
+                        new
+                        {
+                            WorkoutDayTemplateId = 19,
+                            MuscleGroupId = 6,
+                            ExerciseCount = 2
+                        },
+                        new
+                        {
+                            WorkoutDayTemplateId = 19,
+                            MuscleGroupId = 8,
+                            ExerciseCount = 1
+                        },
+                        new
+                        {
+                            WorkoutDayTemplateId = 20,
+                            MuscleGroupId = 1,
+                            ExerciseCount = 2
+                        },
+                        new
+                        {
+                            WorkoutDayTemplateId = 20,
+                            MuscleGroupId = 5,
+                            ExerciseCount = 1
                         });
                 });
 
@@ -2136,7 +2538,48 @@ namespace GymCoach.Api.Migrations
                             HasSupersets = true,
                             IsPremium = true,
                             Name = "Superset Training"
+                        },
+                        new
+                        {
+                            Id = 5,
+                            Description = "Efficient 4-day strength program. Each day focuses on one main lift (Deadlift, OHP, Squat, Bench) with volume work and accessories.",
+                            HasSupersets = false,
+                            IsPremium = true,
+                            Name = "Minimal Strength 4-Day"
                         });
+                });
+
+            modelBuilder.Entity("GymCoach.Api.Models.XpEvent", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("text");
+
+                    b.Property<int>("EventType")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("RelatedEntityId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("XpAmount")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "CreatedAt");
+
+                    b.ToTable("XpEvents");
                 });
 
             modelBuilder.Entity("GymCoach.Api.Models.CustomTemplateExercise", b =>
@@ -2186,6 +2629,33 @@ namespace GymCoach.Api.Migrations
                     b.Navigation("Equipment");
 
                     b.Navigation("Exercise");
+                });
+
+            modelBuilder.Entity("GymCoach.Api.Models.ExercisePerformanceHistory", b =>
+                {
+                    b.HasOne("GymCoach.Api.Models.Exercise", "Exercise")
+                        .WithMany()
+                        .HasForeignKey("ExerciseId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("GymCoach.Api.Models.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("GymCoach.Api.Models.UserWorkoutDay", "UserWorkoutDay")
+                        .WithMany()
+                        .HasForeignKey("UserWorkoutDayId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Exercise");
+
+                    b.Navigation("User");
+
+                    b.Navigation("UserWorkoutDay");
                 });
 
             modelBuilder.Entity("GymCoach.Api.Models.ExerciseSecondaryMuscle", b =>
@@ -2274,6 +2744,25 @@ namespace GymCoach.Api.Migrations
                     b.Navigation("MuscleGroupB");
                 });
 
+            modelBuilder.Entity("GymCoach.Api.Models.UnlockedPlan", b =>
+                {
+                    b.HasOne("GymCoach.Api.Models.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("GymCoach.Api.Models.WorkoutTemplate", "WorkoutTemplate")
+                        .WithMany()
+                        .HasForeignKey("WorkoutTemplateId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+
+                    b.Navigation("WorkoutTemplate");
+                });
+
             modelBuilder.Entity("GymCoach.Api.Models.UserEquipment", b =>
                 {
                     b.HasOne("GymCoach.Api.Models.Equipment", "Equipment")
@@ -2310,6 +2799,17 @@ namespace GymCoach.Api.Migrations
                     b.Navigation("Exercise");
 
                     b.Navigation("UserWorkoutDay");
+                });
+
+            modelBuilder.Entity("GymCoach.Api.Models.UserProgress", b =>
+                {
+                    b.HasOne("GymCoach.Api.Models.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("GymCoach.Api.Models.UserSuperset", b =>
@@ -2405,6 +2905,17 @@ namespace GymCoach.Api.Migrations
                         .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade);
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("GymCoach.Api.Models.XpEvent", b =>
+                {
+                    b.HasOne("GymCoach.Api.Models.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
                     b.Navigation("User");
                 });

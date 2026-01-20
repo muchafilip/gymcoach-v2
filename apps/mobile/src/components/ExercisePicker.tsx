@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { useThemeStore } from '../store/themeStore';
 import { getExercises } from '../api/exercises';
-import { addExerciseToDay } from '../api/workouts';
+import { addExerciseToDay, substituteExercise } from '../api/workouts';
 import { Exercise, UserExercise } from '../types';
 
 interface ExercisePickerProps {
@@ -21,6 +21,9 @@ interface ExercisePickerProps {
   dayId: number;
   onExerciseAdded: (exercise: UserExercise) => void;
   onClose: () => void;
+  // Swap mode props
+  swapExerciseId?: number; // If provided, we're in swap mode
+  onExerciseSwapped?: () => void;
 }
 
 export default function ExercisePicker({
@@ -28,7 +31,10 @@ export default function ExercisePicker({
   dayId,
   onExerciseAdded,
   onClose,
+  swapExerciseId,
+  onExerciseSwapped,
 }: ExercisePickerProps) {
+  const isSwapMode = !!swapExerciseId;
   const { colors } = useThemeStore();
   const [exercises, setExercises] = useState<Exercise[]>([]);
   const [loading, setLoading] = useState(false);
@@ -71,12 +77,19 @@ export default function ExercisePicker({
   const handleSelect = async (exercise: Exercise) => {
     setAdding(true);
     try {
-      const newExercise = await addExerciseToDay(dayId, exercise.id);
-      onExerciseAdded(newExercise);
+      if (isSwapMode && swapExerciseId) {
+        // Swap mode - replace the existing exercise (API returns 204 No Content)
+        await substituteExercise(swapExerciseId, exercise.id);
+        onExerciseSwapped?.();
+      } else {
+        // Add mode - add new exercise to day
+        const newExercise = await addExerciseToDay(dayId, exercise.id);
+        onExerciseAdded(newExercise);
+      }
       setSearchQuery('');
     } catch (err) {
-      console.error('Error adding exercise:', err);
-      Alert.alert('Error', 'Failed to add exercise');
+      console.error('Error with exercise:', err);
+      Alert.alert('Error', isSwapMode ? 'Failed to swap exercise' : 'Failed to add exercise');
     } finally {
       setAdding(false);
     }
@@ -127,7 +140,7 @@ export default function ExercisePicker({
               </Text>
             </TouchableOpacity>
             <Text style={[styles.title, { color: colors.text }]}>
-              Add Exercise
+              {isSwapMode ? 'Swap Exercise' : 'Add Exercise'}
             </Text>
             <View style={styles.headerButton} />
           </View>
@@ -153,7 +166,7 @@ export default function ExercisePicker({
             <View style={styles.addingOverlay}>
               <ActivityIndicator size="large" color={colors.primary} />
               <Text style={[styles.addingText, { color: colors.text }]}>
-                Adding exercise...
+                {isSwapMode ? 'Swapping exercise...' : 'Adding exercise...'}
               </Text>
             </View>
           )}
