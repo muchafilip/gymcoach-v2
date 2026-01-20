@@ -14,14 +14,22 @@ if (!string.IsNullOrEmpty(port))
     builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
 }
 
-// Convert Railway DATABASE_URL to Npgsql format if needed
-var databaseUrl = Environment.GetEnvironmentVariable("DATABASE_URL");
-if (!string.IsNullOrEmpty(databaseUrl))
+// Railway Postgres: build connection string from individual PG* env vars
+var pgHost = Environment.GetEnvironmentVariable("PGHOST");
+var pgPort = Environment.GetEnvironmentVariable("PGPORT") ?? "5432";
+var pgDatabase = Environment.GetEnvironmentVariable("PGDATABASE");
+var pgUser = Environment.GetEnvironmentVariable("PGUSER");
+var pgPassword = Environment.GetEnvironmentVariable("PGPASSWORD");
+
+if (!string.IsNullOrEmpty(pgHost))
 {
-    var uri = new Uri(databaseUrl);
-    var userInfo = uri.UserInfo.Split(':');
-    var connectionString = $"Host={uri.Host};Port={uri.Port};Database={uri.AbsolutePath.TrimStart('/')};Username={userInfo[0]};Password={userInfo[1]}";
+    var connectionString = $"Host={pgHost};Port={pgPort};Database={pgDatabase};Username={pgUser};Password={pgPassword}";
+    Console.WriteLine($"[DB] Using Railway Postgres: Host={pgHost}, Database={pgDatabase}");
     builder.Configuration["ConnectionStrings:DefaultConnection"] = connectionString;
+}
+else
+{
+    Console.WriteLine("[DB] Using local connection string from appsettings");
 }
 
 // Add services to the container.
