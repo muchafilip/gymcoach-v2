@@ -14,12 +14,13 @@ if (!string.IsNullOrEmpty(port))
     builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
 }
 
-// Railway Postgres: build connection string from individual PG* env vars
+// Railway Postgres: build connection string from individual env vars
+// Railway uses both PGXXX and POSTGRES_XXX naming conventions
 var pgHost = Environment.GetEnvironmentVariable("PGHOST");
 var pgPort = Environment.GetEnvironmentVariable("PGPORT") ?? "5432";
-var pgDatabase = Environment.GetEnvironmentVariable("PGDATABASE");
-var pgUser = Environment.GetEnvironmentVariable("PGUSER");
-var pgPassword = Environment.GetEnvironmentVariable("PGPASSWORD");
+var pgDatabase = Environment.GetEnvironmentVariable("PGDATABASE") ?? Environment.GetEnvironmentVariable("POSTGRES_DB");
+var pgUser = Environment.GetEnvironmentVariable("PGUSER") ?? Environment.GetEnvironmentVariable("POSTGRES_USER");
+var pgPassword = Environment.GetEnvironmentVariable("PGPASSWORD") ?? Environment.GetEnvironmentVariable("POSTGRES_PASSWORD");
 
 if (!string.IsNullOrEmpty(pgHost))
 {
