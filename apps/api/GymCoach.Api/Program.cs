@@ -67,6 +67,13 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
+// Auto-run migrations on startup (creates tables if they don't exist)
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<GymCoachDbContext>();
+    db.Database.Migrate();
+}
+
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
