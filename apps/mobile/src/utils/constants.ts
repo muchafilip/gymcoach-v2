@@ -1,5 +1,5 @@
-// Use your Mac's local IP address so iPhone can connect
-export const API_URL = 'http://192.168.50.235:5129/api';
+// Production API on Railway
+export const API_URL = 'https://gymcoach-v2-production.up.railway.app/api';
 
 export const DATABASE_NAME = 'gymcoach.db';
 export const DATABASE_VERSION = 1;

@@ -1,5 +1,7 @@
 using System.Text;
+using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using GymCoach.Api.Data;
@@ -84,6 +86,20 @@ builder.Services.AddCors(options =>
     });
 });
 
+// Rate limiting - 100 requests per minute per IP
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = 429;
+    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 100,
+                Window = TimeSpan.FromMinutes(1)
+            }));
+});
+
 var app = builder.Build();
 
 // Auto-run migrations on startup (creates tables if they don't exist)
@@ -100,6 +116,7 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseCors("AllowAll");
+app.UseRateLimiter();
 // Disable HTTPS redirect for mobile development
 // app.UseHttpsRedirection();
 app.UseAuthentication();
