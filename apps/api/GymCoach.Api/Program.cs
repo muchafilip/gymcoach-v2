@@ -36,7 +36,13 @@ else
 }
 
 // Add services to the container.
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+    {
+        // Use camelCase for JSON (to match frontend) and be case-insensitive for incoming JSON
+        options.JsonSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
+        options.JsonSerializerOptions.PropertyNameCaseInsensitive = true;
+    });
 builder.Services.AddOpenApi();
 
 // Add DbContext

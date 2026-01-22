@@ -278,10 +278,21 @@ export const completeWorkoutDay = async (dayId: number, durationSeconds?: number
       const response = await apiClient.post(`/workouts/days/${dayId}/complete`, {
         durationSeconds,
       });
+      // Mark as synced
+      await db.runAsync(
+        `UPDATE UserWorkoutDay SET sync_status = 'synced' WHERE id = ?`,
+        [dayId]
+      );
       return response.data as WorkoutCompleteResponse;
-    } catch (error) {
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { status: number } };
+      // Don't queue 400/403 errors - they won't succeed on retry
+      if (axiosError.response?.status === 400 || axiosError.response?.status === 403) {
+        console.warn('[Complete] API returned error, not queuing:', axiosError.response?.status);
+        return null;
+      }
+      // Network error or 5xx - queue for later sync
       console.warn('[Offline] Complete workout API failed, queued for sync');
-      // Queue for later sync
       await db.runAsync(
         `INSERT INTO SyncQueue (table_name, record_id, operation, payload, created_at)
          VALUES (?, ?, ?, ?, datetime('now'))`,

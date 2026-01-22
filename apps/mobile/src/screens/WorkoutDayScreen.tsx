@@ -542,20 +542,15 @@ export default function WorkoutDayScreen() {
     // 1. Update UI immediately
     setWorkoutDay((prev) => (prev ? { ...prev, completedAt: new Date().toISOString() } : prev));
 
-    // 2. Save to local DB
-    completeWorkoutDayLocally(dayId, durationSeconds).catch((err) => {
-      console.error('Error saving completion to local DB:', err);
-    });
-
-    // 3. Navigate immediately (don't wait for sync)
+    // 2. Navigate immediately (don't wait for sync)
     navigation.getParent()?.navigate('Home');
 
-    // 4. Sync all pending changes in background
+    // 3. Sync and complete in background
     if (isOnline()) {
       try {
-        // First sync all queued set updates
+        // First sync all queued set updates (NOT including complete - we handle that below)
         await syncUserData();
-        // Then complete on server to get XP
+        // Complete on server to get XP (completeWorkoutDay handles offline queuing)
         const xpResult = await completeWorkoutDay(dayId, durationSeconds);
         if (xpResult) {
           updateFromWorkoutComplete(xpResult);
@@ -563,6 +558,11 @@ export default function WorkoutDayScreen() {
       } catch (err) {
         console.log('Background sync failed, will retry later:', err);
       }
+    } else {
+      // Offline - save locally and queue for later
+      completeWorkoutDayLocally(dayId, durationSeconds).catch((err) => {
+        console.error('Error saving completion to local DB:', err);
+      });
     }
   };
 

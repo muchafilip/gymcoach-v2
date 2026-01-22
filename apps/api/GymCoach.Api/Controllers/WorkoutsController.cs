@@ -459,6 +459,36 @@ public class WorkoutsController : ControllerBase
     {
         var userId = this.GetUserId();
 
+        var day = await _context.UserWorkoutDays
+            .Include(d => d.UserWorkoutPlan)
+            .Include(d => d.ExerciseLogs)
+                .ThenInclude(el => el.Sets)
+            .FirstOrDefaultAsync(d => d.Id == dayId);
+
+        if (day == null) return NotFound();
+        if (day.UserWorkoutPlan.UserId != userId) return Forbid();
+
+        // If already completed, return success (idempotent) - check FIRST before daily limit
+        if (day.CompletedAt.HasValue)
+        {
+            // Just return a minimal success response
+            var progress = await _xpService.GetOrCreateProgress(userId);
+            return Ok(new WorkoutCompleteResponse
+            {
+                XpAwarded = 0,
+                TotalXp = progress.TotalXp,
+                Level = progress.Level,
+                LeveledUp = false,
+                CurrentStreak = progress.CurrentStreak,
+                WorkoutsThisWeek = progress.WorkoutsThisWeek,
+                WeeklyGoalReached = progress.WorkoutsThisWeek >= progress.WeeklyGoal,
+                XpToNextLevel = XpService.GetXpForLevel(progress.Level + 1) - progress.TotalXp,
+                NextUnlockLevel = 0,
+                QuestXpAwarded = 0,
+                AutoClaimedQuests = new List<AutoClaimedQuestDto>()
+            });
+        }
+
         // Check daily workout limit for free users (max 2 per day)
         var user = await _context.Users.FindAsync(userId);
         if (user?.SubscriptionStatus == SubscriptionStatus.Free)
@@ -478,36 +508,6 @@ public class WorkoutsController : ControllerBase
                     message = "Free users can complete up to 2 workouts per day. Upgrade to Premium for unlimited workouts!"
                 });
             }
-        }
-
-        var day = await _context.UserWorkoutDays
-            .Include(d => d.UserWorkoutPlan)
-            .Include(d => d.ExerciseLogs)
-                .ThenInclude(el => el.Sets)
-            .FirstOrDefaultAsync(d => d.Id == dayId);
-
-        if (day == null) return NotFound();
-        if (day.UserWorkoutPlan.UserId != userId) return Forbid();
-
-        // If already completed, return success (idempotent)
-        if (day.CompletedAt.HasValue)
-        {
-            // Just return a minimal success response
-            var progress = await _xpService.GetOrCreateProgress(userId);
-            return Ok(new WorkoutCompleteResponse
-            {
-                XpAwarded = 0,
-                TotalXp = progress.TotalXp,
-                Level = progress.Level,
-                LeveledUp = false,
-                CurrentStreak = progress.CurrentStreak,
-                WorkoutsThisWeek = progress.WorkoutsThisWeek,
-                WeeklyGoalReached = progress.WorkoutsThisWeek >= progress.WeeklyGoal,
-                XpToNextLevel = XpService.GetXpForLevel(progress.Level + 1) - progress.TotalXp,
-                NextUnlockLevel = 0,
-                QuestXpAwarded = 0,
-                AutoClaimedQuests = new List<AutoClaimedQuestDto>()
-            });
         }
 
         day.CompletedAt = DateTime.UtcNow;
