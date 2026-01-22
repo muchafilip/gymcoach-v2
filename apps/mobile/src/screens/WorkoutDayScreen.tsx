@@ -25,6 +25,9 @@ import {
   startWorkoutDay,
   getProgression,
 } from '../api/workouts';
+import { getLocalWorkoutDay, updateSetLocally, completeWorkoutDayLocally } from '../db/localData';
+import { syncUserData } from '../db/sync';
+import { isOnline } from '../utils/network';
 import { UserWorkoutDay, UserExercise, ExerciseRole, SetTarget } from '../types';
 import { useThemeStore } from '../store/themeStore';
 import { useFeature } from '../store/featureStore';
@@ -155,24 +158,47 @@ export default function WorkoutDayScreen() {
   const loadWorkoutDay = async () => {
     try {
       setError(null);
-      const data = await getWorkoutDay(dayId);
-      setWorkoutDay(data);
 
-      // Fetch progression data for each exercise if feature is available
-      if (progressionFeature.isAvailable && data.exercises) {
-        const progressionPromises = data.exercises.map(async (ex) => {
-          const progression = await getProgression(ex.exerciseId);
-          return { exerciseId: ex.exerciseId, progression };
-        });
+      // 1. Try local DB first (instant)
+      try {
+        const localData = await getLocalWorkoutDay(dayId);
+        if (localData && localData.exercises.length > 0) {
+          setWorkoutDay(localData);
+          setLoading(false); // Show immediately
+        }
+      } catch (localErr) {
+        console.log('No local data, fetching from API');
+      }
 
-        const results = await Promise.all(progressionPromises);
-        const progressionMap: Record<number, SetTarget> = {};
-        results.forEach(({ exerciseId, progression }) => {
-          if (progression) {
-            progressionMap[exerciseId] = progression;
+      // 2. Fetch from API in background (if online)
+      if (isOnline()) {
+        try {
+          const data = await getWorkoutDay(dayId);
+          setWorkoutDay(data);
+
+          // Fetch progression data for each exercise if feature is available
+          if (progressionFeature.isAvailable && data.exercises) {
+            const progressionPromises = data.exercises.map(async (ex) => {
+              const progression = await getProgression(ex.exerciseId);
+              return { exerciseId: ex.exerciseId, progression };
+            });
+
+            const results = await Promise.all(progressionPromises);
+            const progressionMap: Record<number, SetTarget> = {};
+            results.forEach(({ exerciseId, progression }) => {
+              if (progression) {
+                progressionMap[exerciseId] = progression;
+              }
+            });
+            setProgressionData(progressionMap);
           }
-        });
-        setProgressionData(progressionMap);
+        } catch (apiErr) {
+          console.log('API fetch failed, using local data');
+          // If we already have local data, don't show error
+          if (!workoutDay) {
+            setError('Failed to load workout');
+          }
+        }
       }
     } catch (err) {
       console.error('Error loading workout day:', err);
@@ -312,45 +338,46 @@ export default function WorkoutDayScreen() {
     field: 'actualReps' | 'weight',
     kgValue: number | null | undefined
   ) => {
-    // Save to backend on blur - value is already in kg for weight
-    try {
-      await updateSet(setId, { [field]: kgValue || 0 });
-    } catch (err) {
-      console.error('Error saving set:', err);
-    }
+    // Save to local DB (instant) - will sync on workout complete
+    const updates = field === 'actualReps'
+      ? { actualReps: kgValue || 0 }
+      : { weight: kgValue || 0 };
+
+    updateSetLocally(setId, updates).catch((err) => {
+      console.error('Error saving to local DB:', err);
+    });
   };
 
   const handleToggleCompleted = async (exerciseId: number, setId: number, completed: boolean) => {
     if (!workoutDay) return;
 
-    try {
-      await updateSet(setId, { completed: !completed });
+    // 1. Update UI immediately (instant feedback)
+    setWorkoutDay((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        exercises: prev.exercises.map((ex) => {
+          if (ex.id !== exerciseId) return ex;
+          return {
+            ...ex,
+            sets: ex.sets.map((set) => {
+              if (set.id !== setId) return set;
+              return { ...set, completed: !completed };
+            }),
+          };
+        }),
+      };
+    });
 
-      setWorkoutDay((prev) => {
-        if (!prev) return prev;
-        return {
-          ...prev,
-          exercises: prev.exercises.map((ex) => {
-            if (ex.id !== exerciseId) return ex;
-            return {
-              ...ex,
-              sets: ex.sets.map((set) => {
-                if (set.id !== setId) return set;
-                return { ...set, completed: !completed };
-              }),
-            };
-          }),
-        };
-      });
-
-      // Start rest timer when marking a set as complete (not uncompleting)
-      if (!completed && restTimerAutoStart) {
-        startRestTimer();
-      }
-    } catch (err) {
-      console.error('Error updating set:', err);
-      Alert.alert('Error', 'Failed to update set');
+    // Start rest timer when marking a set as complete (not uncompleting)
+    if (!completed && restTimerAutoStart) {
+      startRestTimer();
     }
+
+    // 2. Update local DB (async, don't wait) - will sync on workout complete
+    updateSetLocally(setId, { completed: !completed }).catch((err) => {
+      console.error('Error saving to local DB:', err);
+    });
   };
 
   const handleAddSet = async (exercise: UserExercise) => {
@@ -483,20 +510,32 @@ export default function WorkoutDayScreen() {
   };
 
   const handleCompleteWorkout = async () => {
-    try {
-      const durationSeconds = stopTimer();
-      const xpResult = await completeWorkoutDay(dayId, durationSeconds);
+    const durationSeconds = stopTimer();
 
-      // Update XP progress if available
-      if (xpResult) {
-        updateFromWorkoutComplete(xpResult);
+    // 1. Update UI immediately
+    setWorkoutDay((prev) => (prev ? { ...prev, completedAt: new Date().toISOString() } : prev));
+
+    // 2. Save to local DB
+    completeWorkoutDayLocally(dayId, durationSeconds).catch((err) => {
+      console.error('Error saving completion to local DB:', err);
+    });
+
+    // 3. Navigate immediately (don't wait for sync)
+    navigation.getParent()?.navigate('Home');
+
+    // 4. Sync all pending changes in background
+    if (isOnline()) {
+      try {
+        // First sync all queued set updates
+        await syncUserData();
+        // Then complete on server to get XP
+        const xpResult = await completeWorkoutDay(dayId, durationSeconds);
+        if (xpResult) {
+          updateFromWorkoutComplete(xpResult);
+        }
+      } catch (err) {
+        console.log('Background sync failed, will retry later:', err);
       }
-
-      setWorkoutDay((prev) => (prev ? { ...prev, completedAt: new Date().toISOString() } : prev));
-      navigation.getParent()?.navigate('Home');
-    } catch (err) {
-      console.error('Error completing workout:', err);
-      Alert.alert('Error', 'Failed to complete workout');
     }
   };
 

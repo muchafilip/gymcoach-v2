@@ -468,5 +468,34 @@ public static class SeedData
             new CustomTemplateExercise { Id = 11, WorkoutDayTemplateId = 20, ExerciseId = 3, OrderIndex = 1, Sets = 3, TargetReps = 10 }, // Dumbbell Incline Press
             new CustomTemplateExercise { Id = 12, WorkoutDayTemplateId = 20, ExerciseId = 24, OrderIndex = 2, Sets = 3, TargetReps = 12 } // Close Grip Bench Press
         );
+
+        // Quests
+        modelBuilder.Entity<Quest>().HasData(
+            // Daily Quests Pool (randomly assigned, 3-5 active)
+            new Quest { Id = 1, Code = "daily_workout", Title = "Complete a Workout", Description = "Finish any workout today", Type = QuestType.Daily, XpReward = 50, Icon = "💪", TargetType = "workout_complete", TargetValue = 1, IsActive = true },
+            new Quest { Id = 2, Code = "daily_sets_10", Title = "Log 10 Sets", Description = "Complete 10 sets in your workouts", Type = QuestType.Daily, XpReward = 30, Icon = "🔢", TargetType = "sets_logged", TargetValue = 10, IsActive = true },
+            new Quest { Id = 3, Code = "daily_sets_20", Title = "Log 20 Sets", Description = "Complete 20 sets in your workouts", Type = QuestType.Daily, XpReward = 50, Icon = "📊", TargetType = "sets_logged", TargetValue = 20, IsActive = true },
+            new Quest { Id = 4, Code = "daily_rest", Title = "Take a Rest Day", Description = "Log an intentional rest day", Type = QuestType.Daily, XpReward = 20, Icon = "😴", TargetType = "rest_day", TargetValue = 1, IsActive = true },
+
+            // Weekly Quests Pool (3 assigned Monday)
+            new Quest { Id = 5, Code = "weekly_3_workouts", Title = "Train 3 Times", Description = "Complete 3 workouts this week", Type = QuestType.Weekly, XpReward = 150, Icon = "🗓️", TargetType = "workouts_this_week", TargetValue = 3, IsActive = true },
+            new Quest { Id = 6, Code = "weekly_5_workouts", Title = "Train 5 Times", Description = "Complete 5 workouts this week", Type = QuestType.Weekly, XpReward = 250, Icon = "🔥", TargetType = "workouts_this_week", TargetValue = 5, IsActive = true },
+            new Quest { Id = 7, Code = "weekly_pr", Title = "Hit a New PR", Description = "Set a new personal record this week", Type = QuestType.Weekly, XpReward = 100, Icon = "🏆", TargetType = "pr_achieved", TargetValue = 1, IsActive = true },
+            new Quest { Id = 8, Code = "weekly_sets_100", Title = "Log 100 Sets", Description = "Complete 100 sets this week", Type = QuestType.Weekly, XpReward = 200, Icon = "💯", TargetType = "sets_logged", TargetValue = 100, IsActive = true },
+
+            // Onboarding Quests (assigned on signup, one-time)
+            new Quest { Id = 9, Code = "first_workout", Title = "Complete Your First Workout", Description = "Finish your very first workout", Type = QuestType.Onboarding, XpReward = 100, Icon = "🎯", TargetType = "total_workouts", TargetValue = 1, IsActive = true },
+            new Quest { Id = 10, Code = "subscribe_plan", Title = "Start a Workout Plan", Description = "Subscribe to any workout plan", Type = QuestType.Onboarding, XpReward = 75, Icon = "📋", TargetType = "plans_subscribed", TargetValue = 1, IsActive = true },
+            new Quest { Id = 11, Code = "first_week", Title = "Complete a Full Week", Description = "Hit your weekly workout goal", Type = QuestType.Onboarding, XpReward = 200, Icon = "📅", TargetType = "weeks_completed", TargetValue = 1, IsActive = true },
+
+            // Achievement Quests (always visible, track forever)
+            new Quest { Id = 12, Code = "workouts_10", Title = "Complete 10 Workouts", Description = "Reach 10 total workouts", Type = QuestType.Achievement, XpReward = 200, Icon = "⭐", TargetType = "total_workouts", TargetValue = 10, IsActive = true },
+            new Quest { Id = 13, Code = "workouts_50", Title = "Complete 50 Workouts", Description = "Reach 50 total workouts", Type = QuestType.Achievement, XpReward = 500, Icon = "🌟", TargetType = "total_workouts", TargetValue = 50, IsActive = true },
+            new Quest { Id = 14, Code = "workouts_100", Title = "Complete 100 Workouts", Description = "Reach 100 total workouts", Type = QuestType.Achievement, XpReward = 1000, Icon = "✨", TargetType = "total_workouts", TargetValue = 100, IsActive = true },
+            new Quest { Id = 15, Code = "streak_4", Title = "4-Week Streak", Description = "Hit your weekly goal 4 weeks in a row", Type = QuestType.Achievement, XpReward = 150, Icon = "🔥", TargetType = "streak", TargetValue = 4, IsActive = true },
+            new Quest { Id = 16, Code = "streak_12", Title = "12-Week Streak", Description = "Hit your weekly goal 12 weeks in a row", Type = QuestType.Achievement, XpReward = 500, Icon = "🔥🔥", TargetType = "streak", TargetValue = 12, IsActive = true },
+            new Quest { Id = 17, Code = "level_10", Title = "Reach Level 10", Description = "Reach level 10", Type = QuestType.Achievement, XpReward = 300, Icon = "🎖️", TargetType = "level", TargetValue = 10, IsActive = true },
+            new Quest { Id = 18, Code = "level_25", Title = "Reach Level 25", Description = "Reach level 25", Type = QuestType.Achievement, XpReward = 750, Icon = "🏅", TargetType = "level", TargetValue = 25, IsActive = true }
+        );
     }
 }

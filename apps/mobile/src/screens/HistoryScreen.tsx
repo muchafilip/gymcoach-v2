@@ -11,16 +11,21 @@ import {
 } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { getWorkoutHistory, WorkoutHistory } from '../api/workouts';
+import { getLocalWorkoutHistory } from '../db/localData';
+import { isOnline } from '../utils/network';
 import { useThemeStore } from '../store/themeStore';
 
 type RootNavigation = {
   navigate: (screen: string, params?: any) => void;
 };
 
+// Simplified type for list display (exercises array not needed)
+type WorkoutHistoryItem = Pick<WorkoutHistory, 'id' | 'dayName' | 'completedAt' | 'exerciseCount' | 'totalSets'>;
+
 export default function HistoryScreen() {
   const navigation = useNavigation<RootNavigation>();
   const { colors } = useThemeStore();
-  const [workouts, setWorkouts] = useState<WorkoutHistory[]>([]);
+  const [workouts, setWorkouts] = useState<WorkoutHistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -34,8 +39,30 @@ export default function HistoryScreen() {
   const loadHistory = async () => {
     try {
       setError(null);
-      const data = await getWorkoutHistory();
-      setWorkouts(data);
+
+      // 1. Try local DB first (instant)
+      try {
+        const localData = await getLocalWorkoutHistory();
+        if (localData && localData.length > 0) {
+          setWorkouts(localData);
+          setLoading(false); // Show immediately
+        }
+      } catch (localErr) {
+        console.log('No local history data');
+      }
+
+      // 2. Fetch from API in background (if online)
+      if (isOnline()) {
+        try {
+          const data = await getWorkoutHistory();
+          setWorkouts(data);
+        } catch (apiErr) {
+          console.log('API fetch failed, using local data');
+          if (workouts.length === 0) {
+            setError('Failed to load history');
+          }
+        }
+      }
     } catch (err) {
       console.error('Error loading history:', err);
       setError('Failed to load history');

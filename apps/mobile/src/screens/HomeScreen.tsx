@@ -21,6 +21,8 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 }
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { getHomeData } from '../api/workouts';
+import { getLocalHomeData } from '../db/localData';
+import { isOnline } from '../utils/network';
 import { getInsights, Insight } from '../api/insights';
 import { useThemeStore } from '../store/themeStore';
 import { useProgressStore } from '../store/progressStore';
@@ -29,6 +31,7 @@ import XPBar from '../components/XPBar';
 import LevelUpModal from '../components/LevelUpModal';
 import InsightCard from '../components/InsightCard';
 import TourOverlay from '../components/TourOverlay';
+import QuestsSection from '../components/QuestsSection';
 import { IfFeatureEnabled } from '../components/PremiumGate';
 import { useOnboardingStore } from '../store/onboardingStore';
 import { HomeData } from '../types';
@@ -94,18 +97,40 @@ export default function HomeScreen() {
   const loadData = async () => {
     try {
       setError(null);
-      const homeData = await getHomeData();
-      setData(homeData);
 
-      // Load XP progress if feature is available
-      if (xpFeature.isAvailable) {
-        loadProgress();
+      // 1. Try local DB first (instant)
+      try {
+        const localData = await getLocalHomeData();
+        if (localData) {
+          setData(localData);
+          setLoading(false); // Show immediately
+        }
+      } catch (localErr) {
+        console.log('No local home data');
       }
 
-      // Load insights if feature is available (premium)
-      if (insightsFeature.isAvailable) {
-        const insightsData = await getInsights();
-        setInsights(insightsData.slice(0, 5)); // Show top 5 insights
+      // 2. Fetch from API in background (if online)
+      if (isOnline()) {
+        try {
+          const homeData = await getHomeData();
+          setData(homeData);
+
+          // Load XP progress if feature is available
+          if (xpFeature.isAvailable) {
+            loadProgress();
+          }
+
+          // Load insights if feature is available (premium)
+          if (insightsFeature.isAvailable) {
+            const insightsData = await getInsights();
+            setInsights(insightsData.slice(0, 5)); // Show top 5 insights
+          }
+        } catch (apiErr) {
+          console.log('API fetch failed, using local data');
+          if (!data) {
+            setError('Failed to load data');
+          }
+        }
       }
     } catch (err) {
       console.error('Error loading home data:', err);
@@ -273,6 +298,9 @@ export default function HomeScreen() {
         <View ref={xpBarRef} collapsable={false}>
           <XPBar />
         </View>
+
+        {/* Quests Section */}
+        <QuestsSection />
 
         {/* Weekly Insights - Horizontal Scroll */}
         <IfFeatureEnabled feature="insights">

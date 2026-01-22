@@ -70,6 +70,7 @@ builder.Services.AddScoped<RepSchemeService>();
 builder.Services.AddScoped<SupersetService>();
 builder.Services.AddScoped<PersonalRecordService>();
 builder.Services.AddScoped<XpService>();
+builder.Services.AddScoped<QuestService>();
 builder.Services.AddScoped<InsightsService>();
 builder.Services.AddScoped<PlanUnlockService>();
 builder.Services.AddScoped<IAuthService, AuthService>();

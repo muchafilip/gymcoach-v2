@@ -18,19 +18,22 @@ public class WorkoutsController : ControllerBase
     private readonly ProgressionService _progression;
     private readonly PersonalRecordService _prService;
     private readonly XpService _xpService;
+    private readonly QuestService _questService;
 
     public WorkoutsController(
         GymCoachDbContext context,
         WorkoutGeneratorService generator,
         ProgressionService progression,
         PersonalRecordService prService,
-        XpService xpService)
+        XpService xpService,
+        QuestService questService)
     {
         _context = context;
         _generator = generator;
         _progression = progression;
         _prService = prService;
         _xpService = xpService;
+        _questService = questService;
     }
 
     /// <summary>
@@ -529,6 +532,21 @@ public class WorkoutsController : ControllerBase
 
         var xpResult = await _xpService.OnWorkoutCompleted(userId, dayId, completedSetsCount, newPRsCount);
 
+        // Update quest progress
+        await _questService.UpdateQuestProgress(userId, "workout_complete", 1);
+        await _questService.UpdateQuestProgress(userId, "sets_logged", completedSetsCount);
+        await _questService.UpdateQuestProgress(userId, "total_workouts", 1);
+        await _questService.UpdateQuestProgress(userId, "workouts_this_week", 1);
+        if (newPRsCount > 0)
+        {
+            await _questService.UpdateQuestProgress(userId, "pr_achieved", newPRsCount);
+        }
+        // Check if weekly goal just reached for onboarding quest
+        if (xpResult.WeeklyGoalJustReached)
+        {
+            await _questService.UpdateQuestProgress(userId, "weeks_completed", 1);
+        }
+
         return Ok(new WorkoutCompleteResponse
         {
             XpAwarded = xpResult.TotalXpAwarded,
@@ -943,6 +961,17 @@ public class WorkoutsController : ControllerBase
             BestSetReps = pr.BestSetReps,
             BestSetWeight = pr.BestSetWeight
         };
+    }
+
+    /// <summary>
+    /// Log a rest day (for quest completion)
+    /// </summary>
+    [HttpPost("rest-day")]
+    public async Task<IActionResult> LogRestDay()
+    {
+        var userId = this.GetUserId();
+        await _questService.UpdateQuestProgress(userId, "rest_day", 1);
+        return Ok(new { message = "Rest day logged" });
     }
 
     /// <summary>

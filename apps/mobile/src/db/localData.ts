@@ -1,5 +1,65 @@
 import { getDatabase } from './init';
 import { HomeData, UserWorkoutDay, UserExercise, ExerciseSet, WorkoutTemplate } from '../types';
+import { addToSyncQueue } from './sync';
+
+/**
+ * Update a set locally (instant) and queue for sync
+ */
+export async function updateSetLocally(
+  setId: number,
+  updates: { actualReps?: number; weight?: number; completed?: boolean }
+): Promise<void> {
+  const db = getDatabase();
+
+  const setClauses: string[] = [];
+  const values: (number | null)[] = [];
+
+  if (updates.actualReps !== undefined) {
+    setClauses.push('actual_reps = ?');
+    values.push(updates.actualReps);
+  }
+  if (updates.weight !== undefined) {
+    setClauses.push('weight = ?');
+    values.push(updates.weight);
+  }
+  if (updates.completed !== undefined) {
+    setClauses.push('completed = ?');
+    values.push(updates.completed ? 1 : 0);
+  }
+
+  if (setClauses.length === 0) return;
+
+  setClauses.push("sync_status = 'pending'");
+  values.push(setId);
+
+  await db.runAsync(
+    `UPDATE ExerciseSet SET ${setClauses.join(', ')} WHERE id = ?`,
+    values
+  );
+
+  // Queue for sync
+  await addToSyncQueue('ExerciseSet', setId, 'UPDATE', updates);
+}
+
+/**
+ * Mark workout day as completed locally and queue for sync
+ */
+export async function completeWorkoutDayLocally(
+  dayId: number,
+  durationSeconds?: number
+): Promise<void> {
+  const db = getDatabase();
+  const completedAt = new Date().toISOString();
+
+  await db.runAsync(
+    `UPDATE UserWorkoutDay
+     SET completed_at = ?, duration_seconds = ?, sync_status = 'pending'
+     WHERE id = ?`,
+    [completedAt, durationSeconds ?? null, dayId]
+  );
+
+  await addToSyncQueue('UserWorkoutDay', dayId, 'COMPLETE', { durationSeconds });
+}
 
 /**
  * Get home data entirely from local SQLite database
@@ -543,4 +603,41 @@ export async function getLocalWorkoutPlanDetail(planId: number): Promise<{
     isActive: plan.isActive === 1,
     days,
   };
+}
+
+/**
+ * Get workout history from local SQLite (completed workouts)
+ */
+export async function getLocalWorkoutHistory(): Promise<{
+  id: number;
+  dayName: string;
+  completedAt: string;
+  exerciseCount: number;
+  totalSets: number;
+}[]> {
+  const db = getDatabase();
+
+  const rows = await db.getAllAsync<{
+    id: number;
+    dayName: string;
+    completedAt: string;
+    exerciseCount: number;
+    totalSets: number;
+  }>(
+    `SELECT
+       uwd.id,
+       wdt.name as dayName,
+       uwd.completed_at as completedAt,
+       (SELECT COUNT(*) FROM UserExerciseLog WHERE workout_day_id = uwd.id) as exerciseCount,
+       (SELECT COUNT(*) FROM ExerciseSet es
+        JOIN UserExerciseLog uel ON es.exercise_log_id = uel.id
+        WHERE uel.workout_day_id = uwd.id AND es.completed = 1) as totalSets
+     FROM UserWorkoutDay uwd
+     JOIN WorkoutDayTemplate wdt ON uwd.day_template_id = wdt.id
+     WHERE uwd.completed_at IS NOT NULL
+     ORDER BY uwd.completed_at DESC
+     LIMIT 50`
+  );
+
+  return rows;
 }

@@ -19,6 +19,7 @@ public class UserProgress
     public int WorkoutsThisWeek { get; set; } = 0;
     public int WeeklyGoal { get; set; } = 3;
     public DateTime? WeekStartDate { get; set; }
+    public bool WeeklyGoalMetThisWeek { get; set; } = false;
 
     // Timestamps
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
@@ -48,5 +49,6 @@ public enum XpEventType
     StreakMaintained = 4,
     WeeklyGoalComplete = 5,
     FirstWorkoutOfWeek = 6,
-    LevelUp = 7
+    LevelUp = 7,
+    QuestClaimed = 8
 }

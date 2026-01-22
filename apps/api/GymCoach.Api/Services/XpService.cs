@@ -104,6 +104,7 @@ public class XpService
 
     /// <summary>
     /// Called when a workout is completed - handles all XP awards and streak updates
+    /// Now uses weekly goal-based streak instead of daily streak
     /// </summary>
     public async Task<WorkoutCompleteXpResult> OnWorkoutCompleted(int userId, int workoutDayId, int setsCompleted, int newPRs)
     {
@@ -111,43 +112,16 @@ public class XpService
         var results = new List<XpAwardResult>();
         var now = DateTime.UtcNow;
 
-        // Reset weekly counter if new week
+        // Reset weekly counter if new week (but don't reset streak here - that's done on Monday by QuestService)
         if (progress.WeekStartDate == null || now >= progress.WeekStartDate.Value.AddDays(7))
         {
             progress.WeekStartDate = GetWeekStart(now);
             progress.WorkoutsThisWeek = 0;
+            progress.WeeklyGoalMetThisWeek = false;
         }
 
         // Check if first workout of the week
         bool isFirstOfWeek = progress.WorkoutsThisWeek == 0;
-
-        // Update streak
-        bool streakMaintained = false;
-        if (progress.LastWorkoutDate != null)
-        {
-            var daysSinceLastWorkout = (now.Date - progress.LastWorkoutDate.Value.Date).Days;
-            if (daysSinceLastWorkout == 1)
-            {
-                // Consecutive day - maintain streak
-                progress.CurrentStreak++;
-                streakMaintained = true;
-                if (progress.CurrentStreak > progress.LongestStreak)
-                {
-                    progress.LongestStreak = progress.CurrentStreak;
-                }
-            }
-            else if (daysSinceLastWorkout > 1)
-            {
-                // Streak broken
-                progress.CurrentStreak = 1;
-            }
-            // Same day = no change
-        }
-        else
-        {
-            // First workout ever
-            progress.CurrentStreak = 1;
-        }
 
         progress.LastWorkoutDate = now;
         progress.WorkoutsThisWeek++;
@@ -167,22 +141,18 @@ public class XpService
             results.Add(await AwardXp(userId, XpEventType.NewPersonalRecord, workoutDayId));
         }
 
-        // Award XP for streak
-        if (streakMaintained)
-        {
-            results.Add(await AwardXp(userId, XpEventType.StreakMaintained, workoutDayId));
-        }
-
         // Award XP for first workout of week
         if (isFirstOfWeek)
         {
             results.Add(await AwardXp(userId, XpEventType.FirstWorkoutOfWeek, workoutDayId));
         }
 
-        // Check weekly goal
+        // Check weekly goal - award XP and mark goal met (for streak tracking)
         bool weeklyGoalReached = progress.WorkoutsThisWeek >= progress.WeeklyGoal;
-        if (weeklyGoalReached && progress.WorkoutsThisWeek == progress.WeeklyGoal)
+        bool weeklyGoalJustReached = weeklyGoalReached && !progress.WeeklyGoalMetThisWeek;
+        if (weeklyGoalJustReached)
         {
+            progress.WeeklyGoalMetThisWeek = true;
             results.Add(await AwardXp(userId, XpEventType.WeeklyGoalComplete, workoutDayId));
         }
 
@@ -208,6 +178,7 @@ public class XpService
             CurrentStreak = progress.CurrentStreak,
             WorkoutsThisWeek = progress.WorkoutsThisWeek,
             WeeklyGoalReached = weeklyGoalReached,
+            WeeklyGoalJustReached = weeklyGoalJustReached,
             XpToNextLevel = GetXpForLevel(progress.Level + 1) - progress.TotalXp,
             UnlockedPlan = unlockedPlan,
             NextUnlockLevel = PlanUnlockService.GetNextUnlockLevel(progress.Level)
@@ -331,6 +302,7 @@ public class WorkoutCompleteXpResult
     public int CurrentStreak { get; set; }
     public int WorkoutsThisWeek { get; set; }
     public bool WeeklyGoalReached { get; set; }
+    public bool WeeklyGoalJustReached { get; set; }
     public int XpToNextLevel { get; set; }
 
     // Plan unlock info (for free users)

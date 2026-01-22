@@ -33,6 +33,10 @@ public class GymCoachDbContext : DbContext
     public DbSet<XpEvent> XpEvents => Set<XpEvent>();
     public DbSet<UnlockedPlan> UnlockedPlans => Set<UnlockedPlan>();
 
+    // Quests
+    public DbSet<Quest> Quests => Set<Quest>();
+    public DbSet<UserQuest> UserQuests => Set<UserQuest>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -240,6 +244,22 @@ public class GymCoachDbContext : DbContext
             .WithMany()
             .HasForeignKey(e => e.UserId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        // UserQuest configuration
+        modelBuilder.Entity<UserQuest>()
+            .HasOne(uq => uq.User)
+            .WithMany()
+            .HasForeignKey(uq => uq.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<UserQuest>()
+            .HasOne(uq => uq.Quest)
+            .WithMany(q => q.UserQuests)
+            .HasForeignKey(uq => uq.QuestId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<UserQuest>()
+            .HasIndex(uq => new { uq.UserId, uq.QuestId, uq.AssignedAt });
 
         // Seed data
         SeedData.Seed(modelBuilder);

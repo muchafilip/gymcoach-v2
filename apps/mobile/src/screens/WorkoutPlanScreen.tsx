@@ -14,6 +14,8 @@ import { useNavigation, useRoute, RouteProp, useFocusEffect } from '@react-navig
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { TemplatesStackParamList } from '../navigation/AppNavigator';
 import { getWorkoutPlanDetail } from '../api/workouts';
+import { getLocalWorkoutPlanDetail } from '../db/localData';
+import { isOnline } from '../utils/network';
 import { useThemeStore } from '../store/themeStore';
 
 type NavigationProp = NativeStackNavigationProp<TemplatesStackParamList, 'WorkoutPlan'>;
@@ -65,28 +67,70 @@ export default function WorkoutPlanScreen() {
   const loadPlanData = async () => {
     try {
       setError(null);
-      const data = await getWorkoutPlanDetail(planId);
 
-      const transformedPlan: PlanDetail = {
-        id: data.id,
-        templateName: data.templateName,
-        durationWeeks: data.durationWeeks,
-        isActive: data.isActive,
-        days: data.days.map((d: any) => ({
-          id: d.id,
-          dayNumber: d.dayNumber,
-          weekNumber: d.weekNumber,
-          name: d.name,
-          completedAt: d.completedAt,
-          exerciseCount: d.exercises?.length || 0,
-          exercises: (d.exercises || []).map((e: any) => ({
-            id: e.id,
-            exerciseName: e.exerciseName,
-          })),
-        })),
-      };
+      // 1. Try local DB first (instant)
+      try {
+        const localData = await getLocalWorkoutPlanDetail(planId);
+        if (localData) {
+          const transformedLocal: PlanDetail = {
+            id: localData.id,
+            templateName: localData.templateName,
+            durationWeeks: localData.durationWeeks,
+            isActive: localData.isActive,
+            days: localData.days.map((d) => ({
+              id: d.id,
+              dayNumber: d.dayNumber,
+              weekNumber: d.weekNumber,
+              name: d.name,
+              completedAt: d.completedAt,
+              exerciseCount: d.exercises?.length || 0,
+              exercises: (d.exercises || []).map((e) => ({
+                id: e.id,
+                exerciseName: e.exerciseName,
+              })),
+            })),
+          };
+          setPlan(transformedLocal);
+          setLoading(false); // Show immediately
+        }
+      } catch (localErr) {
+        console.log('No local data available');
+      }
 
-      setPlan(transformedPlan);
+      // 2. Fetch from API in background (if online)
+      if (isOnline()) {
+        try {
+          const data = await getWorkoutPlanDetail(planId);
+
+          const transformedPlan: PlanDetail = {
+            id: data.id,
+            templateName: data.templateName,
+            durationWeeks: data.durationWeeks,
+            isActive: data.isActive,
+            days: data.days.map((d: any) => ({
+              id: d.id,
+              dayNumber: d.dayNumber,
+              weekNumber: d.weekNumber,
+              name: d.name,
+              completedAt: d.completedAt,
+              exerciseCount: d.exercises?.length || 0,
+              exercises: (d.exercises || []).map((e: any) => ({
+                id: e.id,
+                exerciseName: e.exerciseName,
+              })),
+            })),
+          };
+
+          setPlan(transformedPlan);
+        } catch (apiErr) {
+          console.log('API fetch failed, using local data');
+          if (!plan) {
+            setError('Failed to load workout plan');
+          }
+        }
+      } else if (!plan) {
+        setError('No internet connection and no local data');
+      }
     } catch (err) {
       console.error('Error loading workout plan:', err);
       setError('Failed to load workout plan');
