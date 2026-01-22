@@ -417,7 +417,7 @@ const styles = StyleSheet.create({
   },
   list: {
     padding: 16,
-    paddingBottom: 100,
+    paddingBottom: 180,
   },
   exerciseCard: {
     borderRadius: 12,
@@ -468,7 +468,7 @@ const styles = StyleSheet.create({
   },
   addButton: {
     position: 'absolute',
-    bottom: 20,
+    bottom: 100,
     left: 20,
     right: 20,
     paddingVertical: 16,

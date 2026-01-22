@@ -228,10 +228,22 @@ export const syncUserData = async (): Promise<void> => {
 
         // Remove from sync queue after successful sync
         await db.runAsync('DELETE FROM SyncQueue WHERE id = ?', [item.id]);
+        // Mark record as synced
+        await db.runAsync(
+          `UPDATE ${item.table_name} SET sync_status = 'synced' WHERE id = ?`,
+          [item.record_id]
+        );
         console.log(`Synced ${item.table_name} ${item.record_id}`);
-      } catch (error) {
-        console.error(`Failed to sync ${item.table_name} ${item.record_id}:`, error);
-        // Keep in queue for retry
+      } catch (error: unknown) {
+        // If 404, the record doesn't exist on server - remove from queue
+        const axiosError = error as { response?: { status: number } };
+        if (axiosError.response?.status === 404) {
+          console.log(`Record not found on server, removing from queue: ${item.table_name} ${item.record_id}`);
+          await db.runAsync('DELETE FROM SyncQueue WHERE id = ?', [item.id]);
+        } else {
+          console.error(`Failed to sync ${item.table_name} ${item.record_id}:`, error);
+          // Keep in queue for retry
+        }
       }
     }
 

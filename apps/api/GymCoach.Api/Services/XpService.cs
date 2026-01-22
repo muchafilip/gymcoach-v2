@@ -271,7 +271,7 @@ public class XpService
     /// Get XP required for a specific level
     /// Inverse of CalculateLevel: XP = (Level - 1)^2 * 100
     /// </summary>
-    private static int GetXpForLevel(int level)
+    public static int GetXpForLevel(int level)
     {
         return (level - 1) * (level - 1) * 100;
     }

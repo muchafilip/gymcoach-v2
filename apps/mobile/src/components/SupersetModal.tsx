@@ -8,6 +8,7 @@ import {
   ScrollView,
   ActivityIndicator,
   TextInput,
+  Alert,
 } from 'react-native';
 import { useThemeStore } from '../store/themeStore';
 import { UserExercise, SupersetSuggestion } from '../types';
@@ -103,8 +104,10 @@ export default function SupersetModal({
       });
       onSupersetCreated();
       onClose();
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Failed to create superset:', error);
+      const axiosError = error as { response?: { data?: { message?: string } } };
+      Alert.alert('Error', axiosError.response?.data?.message || 'Failed to create superset');
     } finally {
       setCreating(null);
     }
@@ -148,8 +151,10 @@ export default function SupersetModal({
 
       onSupersetCreated();
       onClose();
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Failed to create superset:', error);
+      const axiosError = error as { response?: { data?: { message?: string } } };
+      Alert.alert('Error', axiosError.response?.data?.message || 'Failed to create superset');
     } finally {
       setCreating(null);
       setSelectedExercises([]);

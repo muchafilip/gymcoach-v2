@@ -25,7 +25,7 @@ import {
   startWorkoutDay,
   getProgression,
 } from '../api/workouts';
-import { getLocalWorkoutDay, updateSetLocally, completeWorkoutDayLocally } from '../db/localData';
+import { getLocalWorkoutDay, updateSetLocally, completeWorkoutDayLocally, hasPendingChanges } from '../db/localData';
 import { syncUserData } from '../db/sync';
 import { isOnline } from '../utils/network';
 import { UserWorkoutDay, UserExercise, ExerciseRole, SetTarget } from '../types';
@@ -160,17 +160,28 @@ export default function WorkoutDayScreen() {
       setError(null);
 
       // 1. Try local DB first (instant)
+      let hasLocalData = false;
       try {
         const localData = await getLocalWorkoutDay(dayId);
         if (localData && localData.exercises.length > 0) {
           setWorkoutDay(localData);
           setLoading(false); // Show immediately
+          hasLocalData = true;
         }
       } catch (localErr) {
         console.log('No local data, fetching from API');
       }
 
-      // 2. Fetch from API in background (if online)
+      // 2. Check if we have pending (unsynced) changes - if so, don't overwrite with API data
+      const pendingChanges = await hasPendingChanges(dayId);
+      if (pendingChanges && hasLocalData) {
+        console.log('[Offline] Pending changes detected, using local data only');
+        setLoading(false);
+        setRefreshing(false);
+        return;
+      }
+
+      // 3. Fetch from API in background (if online and no pending changes)
       if (isOnline()) {
         try {
           const data = await getWorkoutDay(dayId);
@@ -338,18 +349,27 @@ export default function WorkoutDayScreen() {
     field: 'actualReps' | 'weight',
     kgValue: number | null | undefined
   ) => {
-    // Save to local DB (instant) - will sync on workout complete
     const updates = field === 'actualReps'
       ? { actualReps: kgValue || 0 }
       : { weight: kgValue || 0 };
 
+    // 1. Save to local DB (instant)
     updateSetLocally(setId, updates).catch((err) => {
       console.error('Error saving to local DB:', err);
     });
+
+    // 2. Also sync to API if online (for quest progress etc)
+    if (isOnline()) {
+      updateSet(setId, updates).catch((err) => {
+        console.log('API sync failed, will retry on workout complete:', err);
+      });
+    }
   };
 
   const handleToggleCompleted = async (exerciseId: number, setId: number, completed: boolean) => {
     if (!workoutDay) return;
+
+    const newCompleted = !completed;
 
     // 1. Update UI immediately (instant feedback)
     setWorkoutDay((prev) => {
@@ -362,7 +382,7 @@ export default function WorkoutDayScreen() {
             ...ex,
             sets: ex.sets.map((set) => {
               if (set.id !== setId) return set;
-              return { ...set, completed: !completed };
+              return { ...set, completed: newCompleted };
             }),
           };
         }),
@@ -370,14 +390,21 @@ export default function WorkoutDayScreen() {
     });
 
     // Start rest timer when marking a set as complete (not uncompleting)
-    if (!completed && restTimerAutoStart) {
+    if (newCompleted && restTimerAutoStart) {
       startRestTimer();
     }
 
-    // 2. Update local DB (async, don't wait) - will sync on workout complete
-    updateSetLocally(setId, { completed: !completed }).catch((err) => {
+    // 2. Save to local DB (instant)
+    updateSetLocally(setId, { completed: newCompleted }).catch((err) => {
       console.error('Error saving to local DB:', err);
     });
+
+    // 3. Sync to API if online (for quest progress tracking)
+    if (isOnline()) {
+      updateSet(setId, { completed: newCompleted }).catch((err) => {
+        console.log('API sync failed, will retry on workout complete:', err);
+      });
+    }
   };
 
   const handleAddSet = async (exercise: UserExercise) => {

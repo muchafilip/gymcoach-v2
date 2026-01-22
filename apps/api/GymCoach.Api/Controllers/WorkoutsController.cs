@@ -489,6 +489,27 @@ public class WorkoutsController : ControllerBase
         if (day == null) return NotFound();
         if (day.UserWorkoutPlan.UserId != userId) return Forbid();
 
+        // If already completed, return success (idempotent)
+        if (day.CompletedAt.HasValue)
+        {
+            // Just return a minimal success response
+            var progress = await _xpService.GetOrCreateProgress(userId);
+            return Ok(new WorkoutCompleteResponse
+            {
+                XpAwarded = 0,
+                TotalXp = progress.TotalXp,
+                Level = progress.Level,
+                LeveledUp = false,
+                CurrentStreak = progress.CurrentStreak,
+                WorkoutsThisWeek = progress.WorkoutsThisWeek,
+                WeeklyGoalReached = progress.WorkoutsThisWeek >= progress.WeeklyGoal,
+                XpToNextLevel = XpService.GetXpForLevel(progress.Level + 1) - progress.TotalXp,
+                NextUnlockLevel = 0,
+                QuestXpAwarded = 0,
+                AutoClaimedQuests = new List<AutoClaimedQuestDto>()
+            });
+        }
+
         day.CompletedAt = DateTime.UtcNow;
         if (request?.DurationSeconds.HasValue == true)
         {

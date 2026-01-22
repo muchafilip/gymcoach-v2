@@ -61,14 +61,29 @@ export async function offlineWrite(
   if (isOnline()) {
     try {
       await apiCall();
-      // Success - remove from queue
+      // Success - remove from queue and mark as synced
       await db.runAsync(
         'DELETE FROM SyncQueue WHERE table_name = ? AND record_id = ? AND operation = ?',
         [queueItem.table, queueItem.id, queueItem.op]
       );
-    } catch (error) {
-      console.warn(`[Offline] API failed, queued for later: ${queueItem.table} ${queueItem.id}`);
-      // Keep in queue for later sync
+      // Mark the record as synced
+      await db.runAsync(
+        `UPDATE ${queueItem.table} SET sync_status = 'synced' WHERE id = ?`,
+        [queueItem.id]
+      );
+    } catch (error: unknown) {
+      // If 404, the record doesn't exist on server - remove from queue
+      const axiosError = error as { response?: { status: number } };
+      if (axiosError.response?.status === 404) {
+        console.log(`[Offline] Record not found on server, removing from queue: ${queueItem.table} ${queueItem.id}`);
+        await db.runAsync(
+          'DELETE FROM SyncQueue WHERE table_name = ? AND record_id = ? AND operation = ?',
+          [queueItem.table, queueItem.id, queueItem.op]
+        );
+      } else {
+        console.warn(`[Offline] API failed, queued for later: ${queueItem.table} ${queueItem.id}`);
+        // Keep in queue for later sync
+      }
     }
   } else {
     console.log(`[Offline] Queued for sync: ${queueItem.table} ${queueItem.id}`);

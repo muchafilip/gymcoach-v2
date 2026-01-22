@@ -606,6 +606,24 @@ export async function getLocalWorkoutPlanDetail(planId: number): Promise<{
 }
 
 /**
+ * Check if a workout day has pending (unsynced) changes
+ */
+export async function hasPendingChanges(dayId: number): Promise<boolean> {
+  const db = getDatabase();
+
+  // Check if any set in this workout day has pending sync status
+  const result = await db.getFirstAsync<{ count: number }>(
+    `SELECT COUNT(*) as count
+     FROM ExerciseSet es
+     JOIN UserExerciseLog uel ON es.exercise_log_id = uel.id
+     WHERE uel.workout_day_id = ? AND es.sync_status = 'pending'`,
+    [dayId]
+  );
+
+  return (result?.count || 0) > 0;
+}
+
+/**
  * Get workout history from local SQLite (completed workouts)
  */
 export async function getLocalWorkoutHistory(): Promise<{
