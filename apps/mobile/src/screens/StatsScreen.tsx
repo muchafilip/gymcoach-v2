@@ -14,8 +14,14 @@ import {
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useThemeStore } from '../store/themeStore';
 import { usePreferencesStore } from '../store/preferencesStore';
+import { useProgressStore } from '../store/progressStore';
 import { getProgressStats, ProgressStats } from '../api/stats';
-import { getWorkoutHistory, WorkoutHistory } from '../api/workouts';
+import {
+  getWorkoutHistory,
+  getWorkoutHistoryExercises,
+  WorkoutHistory,
+  HistoryExerciseDetail,
+} from '../api/workouts';
 import PremiumGate from '../components/PremiumGate';
 
 const screenWidth = Dimensions.get('window').width;
@@ -88,10 +94,121 @@ const chartStyles = StyleSheet.create({
   label: { position: 'absolute', fontSize: 9, color: '#888' },
 });
 
+// Expandable exercise row with individual sets
+function ExerciseDetailRow({
+  exercise,
+  colors,
+  displayWeight,
+  weightUnit,
+}: {
+  exercise: HistoryExerciseDetail;
+  colors: any;
+  displayWeight: (kg: number) => number;
+  weightUnit: string;
+}) {
+  const [expanded, setExpanded] = useState(false);
+
+  const completedSets = exercise.sets;
+  const minWeight = completedSets.length > 0 ? Math.min(...completedSets.map(s => s.weight)) : 0;
+  const maxWeight = completedSets.length > 0 ? Math.max(...completedSets.map(s => s.weight)) : 0;
+  const weightRange =
+    minWeight === maxWeight
+      ? `${displayWeight(maxWeight)}${weightUnit}`
+      : `${displayWeight(minWeight)}-${displayWeight(maxWeight)}${weightUnit}`;
+
+  return (
+    <View style={exerciseRowStyles.container}>
+      <TouchableOpacity
+        style={exerciseRowStyles.header}
+        onPress={() => setExpanded(!expanded)}
+        activeOpacity={0.7}
+      >
+        <Text style={[exerciseRowStyles.name, { color: colors.text }]} numberOfLines={1}>
+          {exercise.name}
+        </Text>
+        <View style={exerciseRowStyles.summaryRow}>
+          <Text style={[exerciseRowStyles.summary, { color: colors.textSecondary }]}>
+            {completedSets.length} sets @ {weightRange}
+          </Text>
+          <Text style={[exerciseRowStyles.expandIcon, { color: colors.textMuted }]}>
+            {expanded ? '−' : '+'}
+          </Text>
+        </View>
+      </TouchableOpacity>
+
+      {expanded && (
+        <View style={[exerciseRowStyles.setsContainer, { backgroundColor: colors.surfaceAlt }]}>
+          {completedSets.map((set, idx) => (
+            <View key={idx} style={exerciseRowStyles.setRow}>
+              <Text style={[exerciseRowStyles.setNumber, { color: colors.textMuted }]}>
+                Set {set.setNumber}
+              </Text>
+              <Text style={[exerciseRowStyles.setDetail, { color: colors.text }]}>
+                {set.reps} reps @ {displayWeight(set.weight)}{weightUnit}
+              </Text>
+            </View>
+          ))}
+        </View>
+      )}
+    </View>
+  );
+}
+
+const exerciseRowStyles = StyleSheet.create({
+  container: {
+    marginBottom: 8,
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 6,
+  },
+  name: {
+    fontSize: 14,
+    fontWeight: '500',
+    flex: 1,
+    marginRight: 8,
+  },
+  summaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  summary: {
+    fontSize: 12,
+  },
+  expandIcon: {
+    fontSize: 16,
+    fontWeight: '300',
+  },
+  setsContainer: {
+    marginLeft: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    marginTop: 4,
+  },
+  setRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 4,
+  },
+  setNumber: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  setDetail: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+});
+
 export default function StatsScreen() {
   const navigation = useNavigation<any>();
   const { colors } = useThemeStore();
   const { displayWeight, weightUnit } = usePreferencesStore();
+  const { weeklyGoal } = useProgressStore();
 
   const [activeTab, setActiveTab] = useState<TabType>('history');
   const [loading, setLoading] = useState(true);
@@ -106,16 +223,43 @@ export default function StatsScreen() {
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
 
-  // Auto-expand recent entries (this week + last week)
+  // Lazy loading state for exercise details
+  const [exerciseDetails, setExerciseDetails] = useState<Map<number, HistoryExerciseDetail[]>>(new Map());
+  const [loadingExercises, setLoadingExercises] = useState<Set<number>>(new Set());
+
+  // Auto-expand recent entries based on weekly goal
   useEffect(() => {
     if (workouts.length > 0) {
-      const twoWeeksAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
-      const recentIds = workouts
-        .filter(w => new Date(w.completedAt) >= twoWeeksAgo)
-        .map(w => w.id);
+      const autoExpandCount = weeklyGoal || 3; // Default to 3 if no weekly goal
+      const recentIds = workouts.slice(0, autoExpandCount).map(w => w.id);
       setExpandedIds(new Set(recentIds));
+
+      // Pre-load exercises for auto-expanded workouts
+      recentIds.forEach(id => {
+        if (!exerciseDetails.has(id)) {
+          loadExercisesForDay(id);
+        }
+      });
     }
-  }, [workouts]);
+  }, [workouts, weeklyGoal]);
+
+  const loadExercisesForDay = async (dayId: number) => {
+    if (exerciseDetails.has(dayId) || loadingExercises.has(dayId)) return;
+
+    setLoadingExercises(prev => new Set(prev).add(dayId));
+    try {
+      const exercises = await getWorkoutHistoryExercises(dayId);
+      setExerciseDetails(prev => new Map(prev).set(dayId, exercises));
+    } catch (error) {
+      console.error('Failed to load exercises for day:', dayId, error);
+    } finally {
+      setLoadingExercises(prev => {
+        const next = new Set(prev);
+        next.delete(dayId);
+        return next;
+      });
+    }
+  };
 
   const toggleExpand = (id: number) => {
     setExpandedIds(prev => {
@@ -124,6 +268,10 @@ export default function StatsScreen() {
         next.delete(id);
       } else {
         next.add(id);
+        // Lazy load exercises when expanding
+        if (!exerciseDetails.has(id)) {
+          loadExercisesForDay(id);
+        }
       }
       return next;
     });
@@ -143,9 +291,8 @@ export default function StatsScreen() {
         setStats(data);
       } else {
         setHistoryError(null);
-        const data = await getWorkoutHistory();
-        console.log('History API response:', JSON.stringify(data[0], null, 2));
-        setWorkouts(data);
+        const response = await getWorkoutHistory(1, 20);
+        setWorkouts(response.items);
       }
     } catch (err) {
       console.error('Error loading stats:', err);
@@ -394,19 +541,26 @@ export default function StatsScreen() {
                 <Text style={[styles.historyStat, { color: colors.textSecondary }]}>{item.totalSets} sets</Text>
               </View>
 
-              {/* Expandable exercise details */}
-              {isExpanded && item.exercises && item.exercises.length > 0 && (
+              {/* Expandable exercise details - lazy loaded */}
+              {isExpanded && (
                 <View style={[styles.exerciseDetails, { borderTopColor: colors.border }]}>
-                  {item.exercises.map((ex, idx) => (
-                    <View key={idx} style={styles.exerciseRow}>
-                      <Text style={[styles.exerciseName, { color: colors.text }]} numberOfLines={1}>
-                        {ex.name}
-                      </Text>
-                      <Text style={[styles.exerciseStats, { color: colors.textSecondary }]}>
-                        {ex.sets}×{ex.reps} @ {ex.weight}kg
-                      </Text>
-                    </View>
-                  ))}
+                  {loadingExercises.has(item.id) ? (
+                    <ActivityIndicator size="small" color={colors.primary} style={{ marginVertical: 12 }} />
+                  ) : exerciseDetails.has(item.id) ? (
+                    exerciseDetails.get(item.id)!.map((exercise) => (
+                      <ExerciseDetailRow
+                        key={exercise.exerciseLogId}
+                        exercise={exercise}
+                        colors={colors}
+                        displayWeight={displayWeight}
+                        weightUnit={weightUnit}
+                      />
+                    ))
+                  ) : (
+                    <Text style={[styles.loadingText, { color: colors.textMuted }]}>
+                      Tap to load exercises...
+                    </Text>
+                  )}
                 </View>
               )}
             </TouchableOpacity>
@@ -516,4 +670,5 @@ const styles = StyleSheet.create({
   expandIcon: { fontSize: 12, marginLeft: 8 },
   exerciseDetails: { marginTop: 10, borderTopWidth: 1, paddingTop: 10 },
   exerciseStats: { fontSize: 13, fontWeight: '500' },
+  loadingText: { fontSize: 13, textAlign: 'center', paddingVertical: 12 },
 });

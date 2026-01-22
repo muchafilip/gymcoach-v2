@@ -77,9 +77,56 @@ export const getWorkoutPlanDetail = async (planId: number) => {
   return getLocalWorkoutPlanDetail(planId);
 };
 
-export const getWorkoutHistory = async (): Promise<WorkoutHistory[]> => {
-  // Bypass cache to get fresh data with exercises
-  const response = await apiClient.get('/workouts/history');
+// Cache for workout history (5 minute TTL)
+let workoutHistoryCache: {
+  data: PaginatedWorkoutHistory;
+  timestamp: number;
+} | null = null;
+const HISTORY_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+export const getWorkoutHistory = async (
+  page: number = 1,
+  pageSize: number = 20
+): Promise<PaginatedWorkoutHistory> => {
+  // Check cache for first page
+  if (page === 1 && workoutHistoryCache && Date.now() - workoutHistoryCache.timestamp < HISTORY_CACHE_TTL) {
+    return { ...workoutHistoryCache.data, fromCache: true };
+  }
+
+  const response = await apiClient.get('/workouts/history', {
+    params: { page, pageSize },
+  });
+
+  const result: PaginatedWorkoutHistory = {
+    items: response.data.items,
+    page: response.data.page,
+    pageSize: response.data.pageSize,
+    totalCount: response.data.totalCount,
+    totalPages: response.data.totalPages,
+    fromCache: false,
+  };
+
+  // Cache first page
+  if (page === 1) {
+    workoutHistoryCache = {
+      data: result,
+      timestamp: Date.now(),
+    };
+  }
+
+  return result;
+};
+
+// Clear history cache (call after completing a workout)
+export const clearWorkoutHistoryCache = () => {
+  workoutHistoryCache = null;
+};
+
+// Lazy load exercise details for a specific workout
+export const getWorkoutHistoryExercises = async (
+  dayId: number
+): Promise<HistoryExerciseDetail[]> => {
+  const response = await apiClient.get(`/workouts/history/${dayId}/exercises`);
   return response.data;
 };
 
@@ -443,5 +490,26 @@ export interface WorkoutHistory {
   completedAt: string;
   exerciseCount: number;
   totalSets: number;
-  exercises: HistoryExercise[];
+  exercises?: HistoryExercise[] | null; // Nullable for lazy loading
+}
+
+export interface PaginatedWorkoutHistory {
+  items: WorkoutHistory[];
+  page: number;
+  pageSize: number;
+  totalCount: number;
+  totalPages: number;
+  fromCache?: boolean;
+}
+
+export interface HistoryExerciseDetail {
+  exerciseLogId: number;
+  name: string;
+  sets: HistorySetDetail[];
+}
+
+export interface HistorySetDetail {
+  setNumber: number;
+  reps: number;
+  weight: number;
 }

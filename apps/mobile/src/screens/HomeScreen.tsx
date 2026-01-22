@@ -31,7 +31,6 @@ import XPBar from '../components/XPBar';
 import LevelUpModal from '../components/LevelUpModal';
 import InsightCard from '../components/InsightCard';
 import TourOverlay from '../components/TourOverlay';
-import QuestsSection from '../components/QuestsSection';
 import { IfFeatureEnabled } from '../components/PremiumGate';
 import { useOnboardingStore } from '../store/onboardingStore';
 import { HomeData } from '../types';
@@ -294,13 +293,10 @@ export default function HomeScreen() {
           </TouchableOpacity>
         )}
 
-        {/* XP Progress Bar */}
+        {/* XP Progress Bar + Quests */}
         <View ref={xpBarRef} collapsable={false}>
           <XPBar />
         </View>
-
-        {/* Quests Section */}
-        <QuestsSection />
 
         {/* Weekly Insights - Horizontal Scroll */}
         <IfFeatureEnabled feature="insights">

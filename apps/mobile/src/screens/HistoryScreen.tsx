@@ -54,8 +54,8 @@ export default function HistoryScreen() {
       // 2. Fetch from API in background (if online)
       if (isOnline()) {
         try {
-          const data = await getWorkoutHistory();
-          setWorkouts(data);
+          const response = await getWorkoutHistory(1, 20);
+          setWorkouts(response.items);
         } catch (apiErr) {
           console.log('API fetch failed, using local data');
           if (workouts.length === 0) {

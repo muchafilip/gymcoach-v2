@@ -48,11 +48,13 @@ public class QuestService
     }
 
     /// <summary>
-    /// Update progress on all matching active quests
+    /// Update progress on all matching active quests - auto-claims when completed
+    /// Returns list of claimed quest results for XP popup notification
     /// </summary>
-    public async Task UpdateQuestProgress(int userId, string targetType, int increment = 1)
+    public async Task<List<QuestClaimResult>> UpdateQuestProgress(int userId, string targetType, int increment = 1)
     {
         var now = DateTime.UtcNow;
+        var claimedResults = new List<QuestClaimResult>();
 
         var activeQuests = await _context.UserQuests
             .Include(uq => uq.Quest)
@@ -70,10 +72,54 @@ public class QuestService
             {
                 userQuest.Completed = true;
                 userQuest.CompletedAt = now;
+
+                // AUTO-CLAIM: Immediately claim the completed quest
+                userQuest.Claimed = true;
+
+                // Award XP
+                var progress = await _xpService.GetOrCreateProgress(userId);
+                int previousLevel = progress.Level;
+
+                progress.TotalXp += userQuest.Quest.XpReward;
+                progress.Level = CalculateLevel(progress.TotalXp);
+                progress.UpdatedAt = DateTime.UtcNow;
+
+                // Log XP event
+                _context.XpEvents.Add(new XpEvent
+                {
+                    UserId = userId,
+                    EventType = XpEventType.QuestClaimed,
+                    XpAmount = userQuest.Quest.XpReward,
+                    Description = $"Quest completed: {userQuest.Quest.Title}",
+                    RelatedEntityId = userQuest.QuestId
+                });
+
+                bool leveledUp = progress.Level > previousLevel;
+                if (leveledUp)
+                {
+                    _context.XpEvents.Add(new XpEvent
+                    {
+                        UserId = userId,
+                        EventType = XpEventType.LevelUp,
+                        XpAmount = 0,
+                        Description = $"Reached level {progress.Level}!"
+                    });
+                }
+
+                claimedResults.Add(new QuestClaimResult
+                {
+                    QuestTitle = userQuest.Quest.Title,
+                    XpAwarded = userQuest.Quest.XpReward,
+                    TotalXp = progress.TotalXp,
+                    Level = progress.Level,
+                    LeveledUp = leveledUp,
+                    XpToNextLevel = GetXpForLevel(progress.Level + 1) - progress.TotalXp
+                });
             }
         }
 
         await _context.SaveChangesAsync();
+        return claimedResults;
     }
 
     /// <summary>
@@ -482,6 +528,7 @@ public class UserQuestDto
 
 public class QuestClaimResult
 {
+    public string QuestTitle { get; set; } = "";
     public int XpAwarded { get; set; }
     public int TotalXp { get; set; }
     public int Level { get; set; }

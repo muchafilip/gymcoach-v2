@@ -532,32 +532,43 @@ public class WorkoutsController : ControllerBase
 
         var xpResult = await _xpService.OnWorkoutCompleted(userId, dayId, completedSetsCount, newPRsCount);
 
-        // Update quest progress
-        await _questService.UpdateQuestProgress(userId, "workout_complete", 1);
-        await _questService.UpdateQuestProgress(userId, "sets_logged", completedSetsCount);
-        await _questService.UpdateQuestProgress(userId, "total_workouts", 1);
-        await _questService.UpdateQuestProgress(userId, "workouts_this_week", 1);
+        // Update quest progress and collect auto-claimed quest results
+        var questClaimResults = new List<QuestClaimResult>();
+        questClaimResults.AddRange(await _questService.UpdateQuestProgress(userId, "workout_complete", 1));
+        questClaimResults.AddRange(await _questService.UpdateQuestProgress(userId, "sets_logged", completedSetsCount));
+        questClaimResults.AddRange(await _questService.UpdateQuestProgress(userId, "total_workouts", 1));
+        questClaimResults.AddRange(await _questService.UpdateQuestProgress(userId, "workouts_this_week", 1));
         if (newPRsCount > 0)
         {
-            await _questService.UpdateQuestProgress(userId, "pr_achieved", newPRsCount);
+            questClaimResults.AddRange(await _questService.UpdateQuestProgress(userId, "pr_achieved", newPRsCount));
         }
         // Check if weekly goal just reached for onboarding quest
         if (xpResult.WeeklyGoalJustReached)
         {
-            await _questService.UpdateQuestProgress(userId, "weeks_completed", 1);
+            questClaimResults.AddRange(await _questService.UpdateQuestProgress(userId, "weeks_completed", 1));
         }
+
+        // Calculate total quest XP
+        var questXpAwarded = questClaimResults.Sum(r => r.XpAwarded);
+        var autoClaimedQuests = questClaimResults.Select(r => new AutoClaimedQuestDto
+        {
+            Title = r.QuestTitle,
+            XpAwarded = r.XpAwarded
+        }).ToList();
 
         return Ok(new WorkoutCompleteResponse
         {
             XpAwarded = xpResult.TotalXpAwarded,
-            TotalXp = xpResult.TotalXp,
+            TotalXp = xpResult.TotalXp + questXpAwarded, // Include quest XP in total
             Level = xpResult.Level,
-            LeveledUp = xpResult.LeveledUp,
+            LeveledUp = xpResult.LeveledUp || questClaimResults.Any(r => r.LeveledUp),
             CurrentStreak = xpResult.CurrentStreak,
             WorkoutsThisWeek = xpResult.WorkoutsThisWeek,
             WeeklyGoalReached = xpResult.WeeklyGoalReached,
             XpToNextLevel = xpResult.XpToNextLevel,
             NextUnlockLevel = xpResult.NextUnlockLevel,
+            QuestXpAwarded = questXpAwarded,
+            AutoClaimedQuests = autoClaimedQuests,
             UnlockedPlan = xpResult.UnlockedPlan != null
                 ? new UnlockedPlanDto
                 {
@@ -886,20 +897,27 @@ public class WorkoutsController : ControllerBase
     }
 
     /// <summary>
-    /// Get workout history for a user
+    /// Get workout history for a user with pagination
     /// </summary>
     [HttpGet("history")]
-    public async Task<ActionResult<List<WorkoutHistoryDto>>> GetWorkoutHistory()
+    public async Task<ActionResult<PaginatedWorkoutHistoryResponse>> GetWorkoutHistory(
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20)
     {
         var userId = this.GetUserId();
-        var history = await _context.UserWorkoutDays
+
+        var query = _context.UserWorkoutDays
             .Include(d => d.WorkoutDayTemplate)
-            .Include(d => d.ExerciseLogs)
-                .ThenInclude(el => el.Exercise)
-            .Include(d => d.ExerciseLogs)
-                .ThenInclude(el => el.Sets)
             .Where(d => d.UserWorkoutPlan.UserId == userId && d.CompletedAt != null)
-            .OrderByDescending(d => d.CompletedAt)
+            .OrderByDescending(d => d.CompletedAt);
+
+        var totalCount = await query.CountAsync();
+
+        // Paginated without exercise details (lazy load later)
+        var history = await query
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Include(d => d.ExerciseLogs)
             .Select(d => new WorkoutHistoryDto
             {
                 Id = d.Id,
@@ -907,20 +925,56 @@ public class WorkoutsController : ControllerBase
                 CompletedAt = d.CompletedAt!.Value,
                 ExerciseCount = d.ExerciseLogs.Count,
                 TotalSets = d.ExerciseLogs.SelectMany(el => el.Sets).Count(s => s.Completed),
-                Exercises = d.ExerciseLogs.Select(el => new HistoryExerciseDto
-                {
-                    Name = el.Exercise.Name,
-                    Sets = el.Sets.Count(s => s.Completed),
-                    Reps = el.Sets.Where(s => s.Completed)
-                                  .Select(s => s.ActualReps ?? s.TargetReps)
-                                  .FirstOrDefault(),
-                    Weight = el.Sets.Where(s => s.Completed)
-                                    .Max(s => (decimal?)s.Weight) ?? 0
-                }).ToList()
+                Exercises = null // Lazy loaded via separate endpoint
             })
             .ToListAsync();
 
-        return history;
+        return new PaginatedWorkoutHistoryResponse
+        {
+            Items = history,
+            Page = page,
+            PageSize = pageSize,
+            TotalCount = totalCount,
+            TotalPages = (int)Math.Ceiling(totalCount / (double)pageSize)
+        };
+    }
+
+    /// <summary>
+    /// Get exercise details for a specific completed workout (lazy load)
+    /// </summary>
+    [HttpGet("history/{dayId}/exercises")]
+    public async Task<ActionResult<List<HistoryExerciseDetailDto>>> GetWorkoutHistoryExercises(int dayId)
+    {
+        var userId = this.GetUserId();
+
+        var day = await _context.UserWorkoutDays
+            .Include(d => d.UserWorkoutPlan)
+            .Include(d => d.ExerciseLogs)
+                .ThenInclude(el => el.Exercise)
+            .Include(d => d.ExerciseLogs)
+                .ThenInclude(el => el.Sets)
+            .FirstOrDefaultAsync(d => d.Id == dayId && d.UserWorkoutPlan.UserId == userId);
+
+        if (day == null)
+            return NotFound();
+
+        var exercises = day.ExerciseLogs.Select(el =>
+        {
+            var completedSets = el.Sets.Where(s => s.Completed).OrderBy(s => s.SetNumber).ToList();
+            return new HistoryExerciseDetailDto
+            {
+                ExerciseLogId = el.Id,
+                Name = el.Exercise.Name,
+                Sets = completedSets.Select(s => new HistorySetDto
+                {
+                    SetNumber = s.SetNumber,
+                    Reps = s.ActualReps ?? s.TargetReps,
+                    Weight = s.Weight ?? 0
+                }).ToList()
+            };
+        }).ToList();
+
+        return exercises;
     }
 
     /// <summary>
@@ -970,8 +1024,14 @@ public class WorkoutsController : ControllerBase
     public async Task<IActionResult> LogRestDay()
     {
         var userId = this.GetUserId();
-        await _questService.UpdateQuestProgress(userId, "rest_day", 1);
-        return Ok(new { message = "Rest day logged" });
+        var questResults = await _questService.UpdateQuestProgress(userId, "rest_day", 1);
+        var questXpAwarded = questResults.Sum(r => r.XpAwarded);
+        return Ok(new
+        {
+            message = "Rest day logged",
+            questXpAwarded,
+            autoClaimedQuests = questResults.Select(r => new { r.QuestTitle, r.XpAwarded })
+        });
     }
 
     /// <summary>
@@ -1219,13 +1279,36 @@ public class WorkoutHistoryDto
     public DateTime CompletedAt { get; set; }
     public int ExerciseCount { get; set; }
     public int TotalSets { get; set; }
-    public List<HistoryExerciseDto> Exercises { get; set; } = new();
+    public List<HistoryExerciseDto>? Exercises { get; set; } // Nullable for lazy loading
+}
+
+public class PaginatedWorkoutHistoryResponse
+{
+    public List<WorkoutHistoryDto> Items { get; set; } = new();
+    public int Page { get; set; }
+    public int PageSize { get; set; }
+    public int TotalCount { get; set; }
+    public int TotalPages { get; set; }
 }
 
 public class HistoryExerciseDto
 {
     public string Name { get; set; } = "";
     public int Sets { get; set; }
+    public int Reps { get; set; }
+    public decimal Weight { get; set; }
+}
+
+public class HistoryExerciseDetailDto
+{
+    public int ExerciseLogId { get; set; }
+    public string Name { get; set; } = "";
+    public List<HistorySetDto> Sets { get; set; } = new();
+}
+
+public class HistorySetDto
+{
+    public int SetNumber { get; set; }
     public int Reps { get; set; }
     public decimal Weight { get; set; }
 }
@@ -1260,9 +1343,19 @@ public class WorkoutCompleteResponse
     public bool WeeklyGoalReached { get; set; }
     public int XpToNextLevel { get; set; }
 
+    // Auto-claimed quest rewards
+    public int QuestXpAwarded { get; set; }
+    public List<AutoClaimedQuestDto> AutoClaimedQuests { get; set; } = new();
+
     // Plan unlock info
     public UnlockedPlanDto? UnlockedPlan { get; set; }
     public int NextUnlockLevel { get; set; }
+}
+
+public class AutoClaimedQuestDto
+{
+    public string Title { get; set; } = "";
+    public int XpAwarded { get; set; }
 }
 
 public class UnlockedPlanDto

@@ -43,11 +43,11 @@ export const darkColors = {
   card: '#1E293B',
 
   // Primary - bright blue for dark mode
-  primary: '#28d46dff',
+  primary: '#047e35ff',
   primaryLight: 'rgba(96, 165, 250, 0.15)',
 
   // Status colors
-  success: '#28d46dff',
+  success: '#1c5a35ff',
   successLight: 'rgba(52, 211, 153, 0.15)',
   error: '#F87171',
   errorLight: 'rgba(192, 10, 0, 0.89)',
