@@ -12,7 +12,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace GymCoach.Api.Migrations
 {
     [DbContext(typeof(GymCoachDbContext))]
-    [Migration("20260122215721_AddQuestSystem")]
+    [Migration("20260122222421_AddQuestSystem")]
     partial class AddQuestSystem
     {
         /// <inheritdoc />
@@ -1446,6 +1446,242 @@ namespace GymCoach.Api.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("Quests");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1,
+                            Code = "daily_workout",
+                            Description = "Finish any workout today",
+                            Icon = "💪",
+                            IsActive = true,
+                            TargetType = "workout_complete",
+                            TargetValue = 1,
+                            Title = "Complete a Workout",
+                            Type = 1,
+                            XpReward = 50
+                        },
+                        new
+                        {
+                            Id = 2,
+                            Code = "daily_sets_10",
+                            Description = "Complete 10 sets in your workouts",
+                            Icon = "🔢",
+                            IsActive = true,
+                            TargetType = "sets_logged",
+                            TargetValue = 10,
+                            Title = "Log 10 Sets",
+                            Type = 1,
+                            XpReward = 30
+                        },
+                        new
+                        {
+                            Id = 3,
+                            Code = "daily_sets_20",
+                            Description = "Complete 20 sets in your workouts",
+                            Icon = "📊",
+                            IsActive = true,
+                            TargetType = "sets_logged",
+                            TargetValue = 20,
+                            Title = "Log 20 Sets",
+                            Type = 1,
+                            XpReward = 50
+                        },
+                        new
+                        {
+                            Id = 4,
+                            Code = "daily_rest",
+                            Description = "Log an intentional rest day",
+                            Icon = "😴",
+                            IsActive = true,
+                            TargetType = "rest_day",
+                            TargetValue = 1,
+                            Title = "Take a Rest Day",
+                            Type = 1,
+                            XpReward = 20
+                        },
+                        new
+                        {
+                            Id = 5,
+                            Code = "weekly_3_workouts",
+                            Description = "Complete 3 workouts this week",
+                            Icon = "🗓️",
+                            IsActive = true,
+                            TargetType = "workouts_this_week",
+                            TargetValue = 3,
+                            Title = "Train 3 Times",
+                            Type = 2,
+                            XpReward = 150
+                        },
+                        new
+                        {
+                            Id = 6,
+                            Code = "weekly_5_workouts",
+                            Description = "Complete 5 workouts this week",
+                            Icon = "🔥",
+                            IsActive = true,
+                            TargetType = "workouts_this_week",
+                            TargetValue = 5,
+                            Title = "Train 5 Times",
+                            Type = 2,
+                            XpReward = 250
+                        },
+                        new
+                        {
+                            Id = 7,
+                            Code = "weekly_pr",
+                            Description = "Set a new personal record this week",
+                            Icon = "🏆",
+                            IsActive = true,
+                            TargetType = "pr_achieved",
+                            TargetValue = 1,
+                            Title = "Hit a New PR",
+                            Type = 2,
+                            XpReward = 100
+                        },
+                        new
+                        {
+                            Id = 8,
+                            Code = "weekly_sets_100",
+                            Description = "Complete 100 sets this week",
+                            Icon = "💯",
+                            IsActive = true,
+                            TargetType = "sets_logged",
+                            TargetValue = 100,
+                            Title = "Log 100 Sets",
+                            Type = 2,
+                            XpReward = 200
+                        },
+                        new
+                        {
+                            Id = 9,
+                            Code = "first_workout",
+                            Description = "Finish your very first workout",
+                            Icon = "🎯",
+                            IsActive = true,
+                            TargetType = "total_workouts",
+                            TargetValue = 1,
+                            Title = "Complete Your First Workout",
+                            Type = 3,
+                            XpReward = 100
+                        },
+                        new
+                        {
+                            Id = 10,
+                            Code = "subscribe_plan",
+                            Description = "Subscribe to any workout plan",
+                            Icon = "📋",
+                            IsActive = true,
+                            TargetType = "plans_subscribed",
+                            TargetValue = 1,
+                            Title = "Start a Workout Plan",
+                            Type = 3,
+                            XpReward = 75
+                        },
+                        new
+                        {
+                            Id = 11,
+                            Code = "first_week",
+                            Description = "Hit your weekly workout goal",
+                            Icon = "📅",
+                            IsActive = true,
+                            TargetType = "weeks_completed",
+                            TargetValue = 1,
+                            Title = "Complete a Full Week",
+                            Type = 3,
+                            XpReward = 200
+                        },
+                        new
+                        {
+                            Id = 12,
+                            Code = "workouts_10",
+                            Description = "Reach 10 total workouts",
+                            Icon = "⭐",
+                            IsActive = true,
+                            TargetType = "total_workouts",
+                            TargetValue = 10,
+                            Title = "Complete 10 Workouts",
+                            Type = 4,
+                            XpReward = 200
+                        },
+                        new
+                        {
+                            Id = 13,
+                            Code = "workouts_50",
+                            Description = "Reach 50 total workouts",
+                            Icon = "🌟",
+                            IsActive = true,
+                            TargetType = "total_workouts",
+                            TargetValue = 50,
+                            Title = "Complete 50 Workouts",
+                            Type = 4,
+                            XpReward = 500
+                        },
+                        new
+                        {
+                            Id = 14,
+                            Code = "workouts_100",
+                            Description = "Reach 100 total workouts",
+                            Icon = "✨",
+                            IsActive = true,
+                            TargetType = "total_workouts",
+                            TargetValue = 100,
+                            Title = "Complete 100 Workouts",
+                            Type = 4,
+                            XpReward = 1000
+                        },
+                        new
+                        {
+                            Id = 15,
+                            Code = "streak_4",
+                            Description = "Hit your weekly goal 4 weeks in a row",
+                            Icon = "🔥",
+                            IsActive = true,
+                            TargetType = "streak",
+                            TargetValue = 4,
+                            Title = "4-Week Streak",
+                            Type = 4,
+                            XpReward = 150
+                        },
+                        new
+                        {
+                            Id = 16,
+                            Code = "streak_12",
+                            Description = "Hit your weekly goal 12 weeks in a row",
+                            Icon = "🔥🔥",
+                            IsActive = true,
+                            TargetType = "streak",
+                            TargetValue = 12,
+                            Title = "12-Week Streak",
+                            Type = 4,
+                            XpReward = 500
+                        },
+                        new
+                        {
+                            Id = 17,
+                            Code = "level_10",
+                            Description = "Reach level 10",
+                            Icon = "🎖️",
+                            IsActive = true,
+                            TargetType = "level",
+                            TargetValue = 10,
+                            Title = "Reach Level 10",
+                            Type = 4,
+                            XpReward = 300
+                        },
+                        new
+                        {
+                            Id = 18,
+                            Code = "level_25",
+                            Description = "Reach level 25",
+                            Icon = "🏅",
+                            IsActive = true,
+                            TargetType = "level",
+                            TargetValue = 25,
+                            Title = "Reach Level 25",
+                            Type = 4,
+                            XpReward = 750
+                        });
                 });
 
             modelBuilder.Entity("GymCoach.Api.Models.RepScheme", b =>
