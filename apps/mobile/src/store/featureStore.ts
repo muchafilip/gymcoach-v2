@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { checkPremiumStatus, addPurchaseListener } from '../services/purchases';
+import { apiClient } from '../api/client';
 
 // Feature definitions
 export type FeatureFlag =
@@ -110,7 +111,7 @@ interface FeatureState {
   requiresPremium: (feature: FeatureFlag) => boolean;
   setPremiumStatus: (isPremium: boolean) => void;
   syncPremiumStatus: () => Promise<void>;
-  toggleDevMode: () => void;
+  toggleDevMode: () => Promise<void>;
   setFeatureEnabled: (feature: FeatureFlag, enabled: boolean) => void;
   updateFeaturesFromRemote: (features: Partial<Record<FeatureFlag, FeatureConfig>>) => void;
 }
@@ -168,8 +169,16 @@ export const useFeatureStore = create<FeatureState>()(
       },
 
       // Toggle dev mode (for testing premium features)
-      toggleDevMode: () => {
-        set((state) => ({ devModeEnabled: !state.devModeEnabled }));
+      toggleDevMode: async () => {
+        const newState = !get().devModeEnabled;
+        set({ devModeEnabled: newState });
+
+        // Sync to backend so server-side checks also work
+        try {
+          await apiClient.put('/users/subscription', { isPremium: newState });
+        } catch (error) {
+          console.warn('Failed to sync dev mode to backend:', error);
+        }
       },
 
       // Enable/disable a specific feature (for A/B testing or gradual rollout)

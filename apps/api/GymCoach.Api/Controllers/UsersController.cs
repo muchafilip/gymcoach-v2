@@ -85,6 +85,26 @@ public class UsersController : ControllerBase
             EquipmentCount = user.OwnedEquipment.Count
         };
     }
+
+    /// <summary>
+    /// Update subscription status (for dev/testing)
+    /// </summary>
+    [HttpPut("subscription")]
+    public async Task<IActionResult> UpdateSubscription([FromBody] UpdateSubscriptionRequest request)
+    {
+        var userId = this.GetUserId();
+        var user = await _context.Users.FindAsync(userId);
+
+        if (user == null) return NotFound();
+
+        user.SubscriptionStatus = request.IsPremium
+            ? Models.SubscriptionStatus.Premium
+            : Models.SubscriptionStatus.Free;
+
+        await _context.SaveChangesAsync();
+
+        return Ok(new { status = user.SubscriptionStatus.ToString() });
+    }
 }
 
 public class UserPreferencesDto
@@ -95,6 +115,11 @@ public class UserPreferencesDto
 public class UpdatePreferencesRequest
 {
     public string? WeightUnit { get; set; }
+}
+
+public class UpdateSubscriptionRequest
+{
+    public bool IsPremium { get; set; }
 }
 
 public class UserProfileDto
