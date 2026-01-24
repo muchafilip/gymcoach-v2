@@ -109,7 +109,7 @@ interface FeatureState {
   isFeatureEnabled: (feature: FeatureFlag) => boolean;
   isFeatureAvailable: (feature: FeatureFlag) => boolean;
   requiresPremium: (feature: FeatureFlag) => boolean;
-  setPremiumStatus: (isPremium: boolean) => void;
+  setPremiumStatus: (isPremium: boolean) => Promise<void>;
   syncPremiumStatus: () => Promise<void>;
   toggleDevMode: () => Promise<void>;
   setFeatureEnabled: (feature: FeatureFlag, enabled: boolean) => void;
@@ -148,8 +148,18 @@ export const useFeatureStore = create<FeatureState>()(
       },
 
       // Update premium status (call when user subscription changes)
-      setPremiumStatus: (isPremium: boolean) => {
+      setPremiumStatus: async (isPremium: boolean) => {
+        console.log('[PremiumStatus] Setting to:', isPremium);
         set({ isPremium });
+
+        // Sync to backend so server-side checks also work
+        try {
+          console.log('[PremiumStatus] Syncing to backend...');
+          const response = await apiClient.put('/users/subscription', { isPremium });
+          console.log('[PremiumStatus] API response:', response.data);
+        } catch (error) {
+          console.warn('[PremiumStatus] Failed to sync to backend:', error);
+        }
       },
 
       // Sync premium status from RevenueCat
@@ -171,13 +181,16 @@ export const useFeatureStore = create<FeatureState>()(
       // Toggle dev mode (for testing premium features)
       toggleDevMode: async () => {
         const newState = !get().devModeEnabled;
+        console.log('[DevMode] Toggling to:', newState);
         set({ devModeEnabled: newState });
 
         // Sync to backend so server-side checks also work
         try {
-          await apiClient.put('/users/subscription', { isPremium: newState });
+          console.log('[DevMode] Calling API to set isPremium:', newState);
+          const response = await apiClient.put('/users/subscription', { isPremium: newState });
+          console.log('[DevMode] API response:', response.data);
         } catch (error) {
-          console.warn('Failed to sync dev mode to backend:', error);
+          console.warn('[DevMode] Failed to sync dev mode to backend:', error);
         }
       },
 

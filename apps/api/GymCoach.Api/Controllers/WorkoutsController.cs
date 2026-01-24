@@ -491,7 +491,9 @@ public class WorkoutsController : ControllerBase
 
         // Check daily workout limit for free users (max 2 per day)
         var user = await _context.Users.FindAsync(userId);
-        if (user?.SubscriptionStatus == SubscriptionStatus.Free)
+        var isFreeUser = user?.SubscriptionStatus == SubscriptionStatus.Free;
+        Console.WriteLine($"[CompleteDay] User {userId} subscription status: {user?.SubscriptionStatus}, isFree: {isFreeUser}");
+        if (isFreeUser)
         {
             var today = DateTime.UtcNow.Date;
             var completedToday = await _context.UserWorkoutDays
@@ -500,6 +502,7 @@ public class WorkoutsController : ControllerBase
                     && d.CompletedAt.Value.Date == today)
                 .CountAsync();
 
+            Console.WriteLine($"[CompleteDay] Free user completed {completedToday} workouts today");
             if (completedToday >= 2)
             {
                 return BadRequest(new

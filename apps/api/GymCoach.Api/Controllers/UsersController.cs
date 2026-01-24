@@ -93,6 +93,8 @@ public class UsersController : ControllerBase
     public async Task<IActionResult> UpdateSubscription([FromBody] UpdateSubscriptionRequest request)
     {
         var userId = this.GetUserId();
+        Console.WriteLine($"[Subscription] Updating user {userId} to isPremium={request.IsPremium}");
+
         var user = await _context.Users.FindAsync(userId);
 
         if (user == null) return NotFound();
@@ -102,6 +104,7 @@ public class UsersController : ControllerBase
             : Models.SubscriptionStatus.Free;
 
         await _context.SaveChangesAsync();
+        Console.WriteLine($"[Subscription] User {userId} now has status: {user.SubscriptionStatus}");
 
         return Ok(new { status = user.SubscriptionStatus.ToString() });
     }

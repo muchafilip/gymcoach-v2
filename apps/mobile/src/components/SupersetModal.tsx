@@ -126,7 +126,11 @@ export default function SupersetModal({
   };
 
   const handleCreateManualSuperset = async () => {
-    if (selectedExercises.length < 2) return;
+    console.log('[Superset] handleCreateManualSuperset called, selected:', selectedExercises.length);
+    if (selectedExercises.length < 2) {
+      console.log('[Superset] Not enough exercises selected');
+      return;
+    }
 
     setCreating(-1);
     try {
@@ -134,26 +138,31 @@ export default function SupersetModal({
       const exerciseLogIds: number[] = [];
 
       for (const exercise of selectedExercises) {
+        console.log('[Superset] Processing exercise:', exercise.name, 'isInWorkout:', exercise.isInWorkout, 'exerciseLogId:', exercise.exerciseLogId);
         if (exercise.isInWorkout && exercise.exerciseLogId) {
           exerciseLogIds.push(exercise.exerciseLogId);
         } else {
           // Add exercise to workout first
+          console.log('[Superset] Adding exercise to day first:', exercise.exerciseId);
           const newExercise = await addExerciseToDay(dayId, exercise.exerciseId);
           exerciseLogIds.push(newExercise.id);
         }
       }
 
+      console.log('[Superset] Creating superset with exerciseLogIds:', exerciseLogIds);
       // Now create the superset with all exercise log IDs
-      await apiClient.post('/supersets', {
+      const response = await apiClient.post('/supersets', {
         exerciseLogIds,
         isManual: true,
       });
+      console.log('[Superset] API response:', response.data);
 
       onSupersetCreated();
       onClose();
     } catch (error: unknown) {
-      console.error('Failed to create superset:', error);
-      const axiosError = error as { response?: { data?: { message?: string } } };
+      console.error('[Superset] Failed to create superset:', error);
+      const axiosError = error as { response?: { data?: { message?: string }; status?: number } };
+      console.error('[Superset] Error status:', axiosError.response?.status, 'data:', axiosError.response?.data);
       Alert.alert('Error', axiosError.response?.data?.message || 'Failed to create superset');
     } finally {
       setCreating(null);

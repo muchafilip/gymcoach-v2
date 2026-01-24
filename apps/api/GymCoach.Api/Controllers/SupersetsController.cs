@@ -57,6 +57,12 @@ public class SupersetsController : ControllerBase
     [HttpPost]
     public async Task<ActionResult<SupersetGroupDto>> Create([FromBody] CreateSupersetRequest request)
     {
+        Console.WriteLine($"[Superset] Create called with ExerciseLogIds={request.ExerciseLogIds?.Count ?? 0}, ExerciseLogAId={request.ExerciseLogAId}, ExerciseLogBId={request.ExerciseLogBId}, IsManual={request.IsManual}");
+        if (request.ExerciseLogIds != null)
+        {
+            Console.WriteLine($"[Superset] ExerciseLogIds: [{string.Join(", ", request.ExerciseLogIds)}]");
+        }
+
         try
         {
             // Support both old API (exerciseLogAId + exerciseLogBId) and new API (exerciseLogIds array)
@@ -64,17 +70,21 @@ public class SupersetsController : ControllerBase
             if (request.ExerciseLogIds != null && request.ExerciseLogIds.Count >= 2)
             {
                 exerciseIds = request.ExerciseLogIds;
+                Console.WriteLine($"[Superset] Using new API with {exerciseIds.Count} exercises");
             }
             else if (request.ExerciseLogAId > 0 && request.ExerciseLogBId > 0)
             {
                 exerciseIds = [request.ExerciseLogAId, request.ExerciseLogBId];
+                Console.WriteLine($"[Superset] Using legacy API with 2 exercises");
             }
             else
             {
+                Console.WriteLine("[Superset] Error: Must provide at least 2 exercises");
                 return BadRequest("Must provide at least 2 exercises");
             }
 
             var groupId = await _supersetService.CreateSupersetGroup(exerciseIds, request.IsManual);
+            Console.WriteLine($"[Superset] Created superset group {groupId} with {exerciseIds.Count} exercises");
 
             return new SupersetGroupDto
             {
@@ -85,6 +95,7 @@ public class SupersetsController : ControllerBase
         }
         catch (ArgumentException ex)
         {
+            Console.WriteLine($"[Superset] Error: {ex.Message}");
             return BadRequest(ex.Message);
         }
     }
