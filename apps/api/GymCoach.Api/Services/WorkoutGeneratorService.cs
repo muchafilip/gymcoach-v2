@@ -597,7 +597,78 @@ public class WorkoutGeneratorService
     }
 
     /// <summary>
+    /// Generates the next occurrence of a specific day type immediately after completing a day.
+    /// This enables day-by-day generation instead of whole-week generation.
+    /// </summary>
+    public async Task<bool> GenerateNextOccurrenceOfDayType(int planId, int dayTypeId, int completedDayId)
+    {
+        var plan = await _context.UserWorkoutPlans
+            .Include(p => p.WorkoutDays)
+                .ThenInclude(d => d.ExerciseLogs)
+                    .ThenInclude(el => el.Exercise)
+                        .ThenInclude(e => e.PrimaryMuscleGroup)
+            .Include(p => p.WorkoutDays)
+                .ThenInclude(d => d.ExerciseLogs)
+                    .ThenInclude(el => el.Sets)
+            .Include(p => p.WorkoutTemplate)
+                .ThenInclude(t => t.DayTemplates)
+            .FirstOrDefaultAsync(p => p.Id == planId);
+
+        if (plan == null) return false;
+
+        // Find the just-completed day
+        var completedDay = plan.WorkoutDays.FirstOrDefault(d => d.Id == completedDayId);
+        if (completedDay == null) return false;
+
+        var nextWeekNumber = completedDay.WeekNumber + 1;
+
+        // Check if next occurrence already exists
+        var existingNextDay = plan.WorkoutDays
+            .FirstOrDefault(d => d.WeekNumber == nextWeekNumber && d.DayTypeId == dayTypeId);
+
+        if (existingNextDay != null && existingNextDay.ExerciseLogs.Any())
+        {
+            // Already generated
+            return false;
+        }
+
+        // Create placeholder day if it doesn't exist
+        if (existingNextDay == null)
+        {
+            var baseDayNumber = plan.WorkoutDays.Max(d => d.DayNumber);
+            existingNextDay = new UserWorkoutDay
+            {
+                UserWorkoutPlanId = planId,
+                DayNumber = baseDayNumber + 1,
+                WeekNumber = nextWeekNumber,
+                DayTypeId = dayTypeId,
+                WorkoutDayTemplateId = dayTypeId
+            };
+            _context.UserWorkoutDays.Add(existingNextDay);
+            await _context.SaveChangesAsync();
+
+            // Update plan duration if needed
+            if (plan.DurationWeeks < nextWeekNumber)
+            {
+                plan.DurationWeeks = nextWeekNumber;
+                await _context.SaveChangesAsync();
+            }
+        }
+
+        // Copy exercises from the just-completed day with progressive overload
+        if (completedDay.ExerciseLogs.Any())
+        {
+            Console.WriteLine($"[Generate] Day {completedDayId} complete, generating next {completedDay.WorkoutDayTemplate?.Name ?? "day"} (week {nextWeekNumber})");
+            await CopyExercisesFromPreviousDay(existingNextDay.Id, completedDay, plan.UserId, plan.WorkoutTemplate.HasSupersets);
+            return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
     /// Checks if all days in a week are completed and triggers next week generation
+    /// (Legacy method - kept for backwards compatibility, now prefers day-by-day generation)
     /// </summary>
     public async Task<bool> CheckAndGenerateNextWeek(int planId)
     {

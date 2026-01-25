@@ -86,12 +86,33 @@ public class WorkoutsController : ControllerBase
                 .ThenBy(d => d.DayNumber)
                 .FirstOrDefault();
 
+            // If no incomplete days, check if we need to generate next week
+            if (nextDay == null)
+            {
+                var generated = await _generator.CheckAndGenerateNextWeek(activePlan.Id);
+                if (generated)
+                {
+                    // Reload the plan to get the new days
+                    activePlan = await _context.UserWorkoutPlans
+                        .Include(p => p.WorkoutTemplate)
+                        .Include(p => p.WorkoutDays)
+                            .ThenInclude(d => d.WorkoutDayTemplate)
+                        .FirstOrDefaultAsync(p => p.Id == activePlan.Id);
+
+                    nextDay = activePlan?.WorkoutDays
+                        .Where(d => d.CompletedAt == null)
+                        .OrderBy(d => d.WeekNumber)
+                        .ThenBy(d => d.DayNumber)
+                        .FirstOrDefault();
+                }
+            }
+
             if (nextDay != null)
             {
                 nextWorkout = new NextWorkoutDto
                 {
                     DayId = nextDay.Id,
-                    PlanId = activePlan.Id,
+                    PlanId = activePlan!.Id,
                     DayName = nextDay.WorkoutDayTemplate.Name,
                     PlanName = activePlan.WorkoutTemplate.Name,
                     WeekNumber = nextDay.WeekNumber
@@ -558,8 +579,8 @@ public class WorkoutsController : ControllerBase
         }
         await _context.SaveChangesAsync();
 
-        // Check if we need to generate next week's exercises
-        await _generator.CheckAndGenerateNextWeek(day.UserWorkoutPlanId);
+        // Generate next occurrence of this day type immediately (day-by-day generation)
+        await _generator.GenerateNextOccurrenceOfDayType(day.UserWorkoutPlanId, day.DayTypeId, dayId);
 
         // Award XP for workout completion
         var completedSetsCount = day.ExerciseLogs.Sum(el => el.Sets.Count(s => s.Completed));
@@ -991,6 +1012,31 @@ public class WorkoutsController : ControllerBase
     {
         var userId = this.GetUserId();
         return await _progression.CalculateNextTarget(userId, exerciseId);
+    }
+
+    /// <summary>
+    /// Get progression suggestions for multiple exercises in one call
+    /// </summary>
+    [HttpPost("progression/batch")]
+    public async Task<ActionResult<Dictionary<int, SetTarget>>> GetProgressionBatch([FromBody] List<int> exerciseIds)
+    {
+        var userId = this.GetUserId();
+        var results = new Dictionary<int, SetTarget>();
+
+        // Run all progression calculations in parallel
+        var tasks = exerciseIds.Select(async id =>
+        {
+            var target = await _progression.CalculateNextTarget(userId, id);
+            return (id, target);
+        });
+
+        var progressions = await Task.WhenAll(tasks);
+        foreach (var (id, target) in progressions)
+        {
+            results[id] = target;
+        }
+
+        return results;
     }
 
     /// <summary>

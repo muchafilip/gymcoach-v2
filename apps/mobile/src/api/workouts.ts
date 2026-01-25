@@ -206,6 +206,20 @@ export const getProgression = async (exerciseId: number): Promise<SetTarget | nu
   }
 };
 
+export const getProgressionBatch = async (exerciseIds: number[]): Promise<Record<number, SetTarget>> => {
+  if (!isOnline() || exerciseIds.length === 0) {
+    return {};
+  }
+
+  try {
+    const response = await apiClient.post('/workouts/progression/batch', exerciseIds);
+    return response.data;
+  } catch (error) {
+    console.warn('[Progression] Failed to get batch progression:', error);
+    return {};
+  }
+};
+
 // ============================================
 // WRITE OPERATIONS - with offline queue support
 // ============================================

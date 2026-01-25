@@ -23,7 +23,7 @@ import {
   deleteSet,
   deleteExercise,
   startWorkoutDay,
-  getProgression,
+  getProgressionBatch,
 } from '../api/workouts';
 import { getLocalWorkoutDay, updateSetLocally, completeWorkoutDayLocally, hasPendingChanges } from '../db/localData';
 import { syncUserData } from '../db/sync';
@@ -188,20 +188,10 @@ export default function WorkoutDayScreen() {
           const data = await getWorkoutDay(dayId);
           setWorkoutDay(data);
 
-          // Fetch progression data for each exercise if feature is available
-          if (progressionFeature.isAvailable && data.exercises) {
-            const progressionPromises = data.exercises.map(async (ex) => {
-              const progression = await getProgression(ex.exerciseId);
-              return { exerciseId: ex.exerciseId, progression };
-            });
-
-            const results = await Promise.all(progressionPromises);
-            const progressionMap: Record<number, SetTarget> = {};
-            results.forEach(({ exerciseId, progression }) => {
-              if (progression) {
-                progressionMap[exerciseId] = progression;
-              }
-            });
+          // Fetch progression data for all exercises in one batch call
+          if (progressionFeature.isAvailable && data.exercises?.length) {
+            const exerciseIds = data.exercises.map((ex) => ex.exerciseId);
+            const progressionMap = await getProgressionBatch(exerciseIds);
             setProgressionData(progressionMap);
           }
         } catch (apiErr) {

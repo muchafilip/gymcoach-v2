@@ -188,3 +188,70 @@ Key endpoints:
 - `GET /api/workouts/days/{id}` - Get workout day details
 - `POST /api/workouts/days/{id}/complete` - Complete workout day
 - `PUT /api/workouts/sets/{id}` - Update set (reps, weight)
+- `POST /api/workouts/progression/batch` - Get progression for multiple exercises (1 call vs N)
+
+## Architecture Notes
+
+### Workout Generation Flow
+1. User picks template → `POST /generate` → Creates `UserWorkoutPlan` + Week 1 days
+2. User completes day → `POST /complete` → Generates next occurrence of same day type
+3. Progressive overload: If ALL sets hit target reps, TargetReps +1 (max 15)
+
+### Key Concept: DayTypeId
+- Each workout day has a `DayTypeId` that identifies its template (Push, Pull, Legs, etc.)
+- Week 1 Push (DayTypeId=4) → Week 2 Push (DayTypeId=4) → progression carries over
+- This enables day-type-specific progression instead of whole-week generation
+
+### Mobile Offline Architecture
+- SQLite mirrors server data for offline access
+- SyncQueue stores pending mutations
+- `isOnline()` check before API calls, fallback to local
+- Sync runs on app focus and after completing workouts
+
+### Performance Tips
+- Use batch endpoints (`/progression/batch`) instead of N single calls
+- Avoid SaveChangesAsync() in loops - batch DB operations
+- Use navigation properties for EF Core batch inserts
+
+## Common Refactoring Patterns
+
+### Mobile: Online/Offline Wrapper
+```typescript
+// Instead of repeating isOnline() + try/catch everywhere:
+async function withFallback<T>(
+  apiCall: () => Promise<T>,
+  localFallback: () => Promise<T>
+): Promise<T> {
+  if (isOnline()) {
+    try { return await apiCall(); }
+    catch { /* fall through */ }
+  }
+  return localFallback();
+}
+```
+
+### API: Include Chain Extensions
+```csharp
+// Instead of repeating .Include() chains:
+public static IQueryable<UserWorkoutDay> IncludeFull(this IQueryable<UserWorkoutDay> query)
+    => query.Include(d => d.WorkoutDayTemplate)
+            .Include(d => d.ExerciseLogs).ThenInclude(el => el.Exercise)
+            .Include(d => d.ExerciseLogs).ThenInclude(el => el.Sets);
+```
+
+## Future Improvements (Backlog)
+
+### High Priority
+- PR History tracking (track progression over time)
+- Body composition/measurement tracking
+- RPE (Rate of Perceived Exertion) logging
+
+### Medium Priority
+- Exercise variations/families (Squat → Back Squat, Front Squat, etc.)
+- Social features (leaderboards, challenges)
+- Nutrition integration (MyFitnessPal sync)
+
+### Low Priority
+- Coach dashboard (B2B)
+- Apple Watch support
+- Voice control for logging sets
