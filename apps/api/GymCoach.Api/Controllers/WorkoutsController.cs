@@ -45,9 +45,9 @@ public class WorkoutsController : ControllerBase
         try
         {
             var userId = this.GetUserId();
-            Console.WriteLine($"[Generate] UserId={userId}, TemplateId={request.TemplateId}, DurationWeeks={request.DurationWeeks}");
-            var plan = await _generator.GenerateWorkoutPlan(userId, request.TemplateId, request.DurationWeeks);
-            Console.WriteLine($"[Generate] Created plan {plan.Id} with {plan.DurationWeeks} weeks");
+            Console.WriteLine($"[Generate] UserId={userId}, TemplateId={request.TemplateId}, PriorityMuscles={string.Join(",", request.PriorityMuscleIds ?? [])}");
+            var plan = await _generator.GenerateWorkoutPlan(userId, request.TemplateId, request.PriorityMuscleIds);
+            Console.WriteLine($"[Generate] Created plan {plan.Id}");
             return await GetPlanDto(plan.Id);
         }
         catch (ArgumentException ex)
@@ -485,7 +485,11 @@ public class WorkoutsController : ControllerBase
                 XpToNextLevel = XpService.GetXpForLevel(progress.Level + 1) - progress.TotalXp,
                 NextUnlockLevel = 0,
                 QuestXpAwarded = 0,
-                AutoClaimedQuests = new List<AutoClaimedQuestDto>()
+                AutoClaimedQuests = new List<AutoClaimedQuestDto>(),
+                WeekComplete = false,
+                WeeksCompleted = 0,
+                IsMilestone = false,
+                MilestoneWeeks = 0
             });
         }
 
@@ -580,6 +584,22 @@ public class WorkoutsController : ControllerBase
             XpAwarded = r.XpAwarded
         }).ToList();
 
+        // Calculate milestone progress (every 4 weeks)
+        var allPlanDays = await _context.UserWorkoutDays
+            .Where(d => d.UserWorkoutPlanId == day.UserWorkoutPlanId)
+            .ToListAsync();
+
+        var daysByWeek = allPlanDays.GroupBy(d => d.WeekNumber);
+        var completedWeeks = daysByWeek
+            .Where(g => g.All(d => d.CompletedAt != null))
+            .Select(g => g.Key)
+            .ToList();
+
+        var weeksCompleted = completedWeeks.Count;
+        var thisWeekDays = allPlanDays.Where(d => d.WeekNumber == day.WeekNumber).ToList();
+        var weekJustCompleted = thisWeekDays.All(d => d.CompletedAt != null);
+        var isMilestone = weekJustCompleted && weeksCompleted > 0 && weeksCompleted % 4 == 0;
+
         return Ok(new WorkoutCompleteResponse
         {
             XpAwarded = xpResult.TotalXpAwarded,
@@ -600,7 +620,11 @@ public class WorkoutsController : ControllerBase
                     PlanName = xpResult.UnlockedPlan.PlanName,
                     UnlockedAtLevel = xpResult.UnlockedPlan.UnlockedAtLevel
                 }
-                : null
+                : null,
+            WeekComplete = weekJustCompleted,
+            WeeksCompleted = weeksCompleted,
+            IsMilestone = isMilestone,
+            MilestoneWeeks = isMilestone ? weeksCompleted : 0
         });
     }
 
@@ -1180,8 +1204,11 @@ public class GeneratePlanRequest
     [System.Text.Json.Serialization.JsonPropertyName("templateId")]
     public int TemplateId { get; set; }
 
-    [System.Text.Json.Serialization.JsonPropertyName("durationWeeks")]
-    public int DurationWeeks { get; set; } = 4;
+    /// <summary>
+    /// Optional: 1-2 muscle group IDs to prioritize (adds +1 exercise per workout for each)
+    /// </summary>
+    [System.Text.Json.Serialization.JsonPropertyName("priorityMuscleIds")]
+    public List<int>? PriorityMuscleIds { get; set; }
 }
 
 public class ExerciseAlternativeDto
@@ -1374,6 +1401,12 @@ public class WorkoutCompleteResponse
     // Plan unlock info
     public UnlockedPlanDto? UnlockedPlan { get; set; }
     public int NextUnlockLevel { get; set; }
+
+    // Milestone celebration (every 4 weeks)
+    public bool WeekComplete { get; set; }
+    public int WeeksCompleted { get; set; }
+    public bool IsMilestone { get; set; }
+    public int MilestoneWeeks { get; set; }
 }
 
 public class AutoClaimedQuestDto

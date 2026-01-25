@@ -36,6 +36,7 @@ import { useWorkoutTimerStore } from '../store/workoutTimerStore';
 import { useRestTimerStore } from '../store/restTimerStore';
 import { useProgressStore } from '../store/progressStore';
 import LevelUpModal from '../components/LevelUpModal';
+import MilestoneModal from '../components/MilestoneModal';
 import NumberPickerModal from '../components/ui/NumberPickerModal';
 import ExercisePicker from '../components/ExercisePicker';
 import ExerciseInfoModal from '../components/ExerciseInfoModal';
@@ -758,6 +759,7 @@ export default function WorkoutDayScreen() {
 
       <RestTimer />
       <LevelUpModal />
+      <MilestoneModal />
     </SafeAreaView>
   );
 

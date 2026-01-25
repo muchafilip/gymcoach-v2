@@ -26,7 +26,6 @@ import { useThemeStore } from '../store/themeStore';
 
 type NavigationProp = NativeStackNavigationProp<TemplatesStackParamList, 'MyTemplates'>;
 
-const DURATION_OPTIONS = [4, 6, 8];
 
 export default function MyTemplatesScreen() {
   const navigation = useNavigation<NavigationProp>();
@@ -123,14 +122,15 @@ export default function MyTemplatesScreen() {
     setShowDurationModal(true);
   };
 
-  const handleCreatePlan = async (durationWeeks: number) => {
+  const handleCreatePlan = async () => {
     if (!selectedTemplate) return;
 
     setShowDurationModal(false);
     setGenerating(true);
 
     try {
-      const plan = await generateWorkoutPlan(selectedTemplate.id, durationWeeks);
+      // Custom templates start plans without priority muscles (indefinite duration)
+      const plan = await generateWorkoutPlan(selectedTemplate.id);
       navigation.navigate('WorkoutPlan', { planId: plan.id });
     } catch (error) {
       console.error('Error generating plan:', error);
@@ -286,7 +286,7 @@ export default function MyTemplatesScreen() {
         </View>
       </Modal>
 
-      {/* Duration Selection Modal */}
+      {/* Start Plan Modal */}
       <Modal
         visible={showDurationModal}
         transparent={true}
@@ -295,23 +295,19 @@ export default function MyTemplatesScreen() {
       >
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
-            <Text style={[styles.modalTitle, { color: colors.text }]}>Select Plan Duration</Text>
+            <Text style={[styles.modalTitle, { color: colors.text }]}>Start Plan</Text>
             <Text style={[styles.modalSubtitle, { color: colors.textSecondary }]}>
               {selectedTemplate?.name}
             </Text>
 
-            <View style={styles.durationOptions}>
-              {DURATION_OPTIONS.map((weeks) => (
-                <TouchableOpacity
-                  key={weeks}
-                  style={[styles.durationButton, { backgroundColor: colors.primary }]}
-                  onPress={() => handleCreatePlan(weeks)}
-                >
-                  <Text style={[styles.durationWeeks, { color: colors.buttonText }]}>{weeks}</Text>
-                  <Text style={[styles.durationLabel, { color: colors.buttonText }]}>weeks</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+            <TouchableOpacity
+              style={[styles.startPlanButton, { backgroundColor: colors.primary }]}
+              onPress={handleCreatePlan}
+            >
+              <Text style={[styles.startPlanButtonText, { color: colors.buttonText }]}>
+                Start Plan
+              </Text>
+            </TouchableOpacity>
 
             <Pressable
               style={[styles.cancelButton, { borderColor: colors.border }]}
@@ -476,26 +472,16 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
-  durationOptions: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  startPlanButton: {
     width: '100%',
-    marginBottom: 24,
-  },
-  durationButton: {
-    flex: 1,
-    marginHorizontal: 6,
+    paddingVertical: 14,
     borderRadius: 8,
-    paddingVertical: 16,
     alignItems: 'center',
+    marginBottom: 12,
   },
-  durationWeeks: {
-    fontSize: 24,
-    fontWeight: 'bold',
-  },
-  durationLabel: {
-    fontSize: 12,
-    marginTop: 4,
+  startPlanButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
   },
   cancelButton: {
     paddingVertical: 12,

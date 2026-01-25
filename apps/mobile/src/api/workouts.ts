@@ -392,11 +392,11 @@ async function getLocalExerciseHistory(exerciseId: number): Promise<ExerciseHist
 
 export const generateWorkoutPlan = async (
   templateId: number,
-  durationWeeks: number = 4
+  priorityMuscleIds?: number[]
 ) => {
   const response = await apiClient.post('/workouts/generate', {
     templateId,
-    durationWeeks,
+    priorityMuscleIds,
   });
   // Invalidate related caches
   await invalidateCache('plans');

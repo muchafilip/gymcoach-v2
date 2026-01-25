@@ -16,7 +16,7 @@ import {
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { TemplatesStackParamList } from '../navigation/AppNavigator';
-import { WorkoutTemplate } from '../types';
+import { WorkoutTemplate, MuscleGroup } from '../types';
 import { fetchTemplates } from '../api/templates';
 import {
   generateWorkoutPlan,
@@ -25,6 +25,7 @@ import {
   deactivatePlan,
   deletePlan,
 } from '../api/workouts';
+import { fetchMuscleGroups } from '../api/muscleGroups';
 import { useThemeStore } from '../store/themeStore';
 import { useFeatureStore } from '../store/featureStore';
 import { useNavigation as useRootNavigation } from '@react-navigation/native';
@@ -42,9 +43,9 @@ interface UserPlan {
 
 type NavigationProp = NativeStackNavigationProp<TemplatesStackParamList, 'TemplatesList'>;
 
-const DURATION_OPTIONS = [4, 6, 8];
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const FEATURED_CARD_WIDTH = SCREEN_WIDTH * 0.75;
+const MAX_PRIORITY_MUSCLES = 2;
 
 export default function TemplatesScreen() {
   const navigation = useNavigation<NavigationProp>();
@@ -56,10 +57,12 @@ export default function TemplatesScreen() {
   const [activePlanId, setActivePlanId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState<number | null>(null);
-  const [showDurationModal, setShowDurationModal] = useState(false);
+  const [showPriorityModal, setShowPriorityModal] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<WorkoutTemplate | null>(null);
   const [showPlanModal, setShowPlanModal] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<UserPlan | null>(null);
+  const [muscleGroups, setMuscleGroups] = useState<MuscleGroup[]>([]);
+  const [selectedPriorityMuscles, setSelectedPriorityMuscles] = useState<number[]>([]);
 
   useFocusEffect(
     useCallback(() => {
@@ -69,11 +72,13 @@ export default function TemplatesScreen() {
 
   const loadData = async () => {
     try {
-      const [templatesData, plansData] = await Promise.all([
+      const [templatesData, plansData, muscleGroupsData] = await Promise.all([
         fetchTemplates(),
         getUserPlans(),
+        fetchMuscleGroups(),
       ]);
       setTemplates(templatesData);
+      setMuscleGroups(muscleGroupsData);
 
       // Sort plans: active first, then by start date
       const sortedPlans = [...plansData].sort((a: UserPlan, b: UserPlan) => {
@@ -101,20 +106,34 @@ export default function TemplatesScreen() {
       rootNavigation.navigate('Paywall');
       return;
     }
-    // Show duration modal to create a new plan
+    // Show priority muscle modal to create a new plan
     setSelectedTemplate(template);
-    setShowDurationModal(true);
+    setSelectedPriorityMuscles([]);
+    setShowPriorityModal(true);
   };
 
-  const handleCreatePlan = async (durationWeeks: number) => {
+  const togglePriorityMuscle = (muscleId: number) => {
+    setSelectedPriorityMuscles(prev => {
+      if (prev.includes(muscleId)) {
+        return prev.filter(id => id !== muscleId);
+      }
+      if (prev.length >= MAX_PRIORITY_MUSCLES) {
+        return prev; // Don't add more than max
+      }
+      return [...prev, muscleId];
+    });
+  };
+
+  const handleCreatePlan = async () => {
     if (!selectedTemplate) return;
 
-    setShowDurationModal(false);
+    setShowPriorityModal(false);
     setGenerating(selectedTemplate.id);
 
     try {
-      // Generate workout plan with duration
-      const plan = await generateWorkoutPlan(selectedTemplate.id, durationWeeks);
+      // Generate workout plan with priority muscles (plans are now indefinite)
+      const priorityMuscleIds = selectedPriorityMuscles.length > 0 ? selectedPriorityMuscles : undefined;
+      const plan = await generateWorkoutPlan(selectedTemplate.id, priorityMuscleIds);
       console.log('Generated plan:', plan);
 
       // Reload plans and navigate
@@ -126,6 +145,7 @@ export default function TemplatesScreen() {
     } finally {
       setGenerating(null);
       setSelectedTemplate(null);
+      setSelectedPriorityMuscles([]);
     }
   };
 
@@ -443,38 +463,73 @@ Join me on GymCoach and start your fitness journey:
         </View>
       </ScrollView>
 
-      {/* Duration Selection Modal */}
+      {/* Priority Muscle Selection Modal */}
       <Modal
-        visible={showDurationModal}
+        visible={showPriorityModal}
         transparent={true}
         animationType="fade"
-        onRequestClose={() => setShowDurationModal(false)}
+        onRequestClose={() => setShowPriorityModal(false)}
       >
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
-            <Text style={[styles.modalTitle, { color: colors.text }]}>Select Plan Duration</Text>
+            <Text style={[styles.modalTitle, { color: colors.text }]}>Start Plan</Text>
             <Text style={[styles.modalSubtitle, { color: colors.textSecondary }]}>
               {selectedTemplate?.name}
             </Text>
 
-            <View style={styles.durationOptions}>
-              {DURATION_OPTIONS.map((weeks) => (
-                <TouchableOpacity
-                  key={weeks}
-                  style={[styles.durationButton, { backgroundColor: colors.primary }]}
-                  onPress={() => handleCreatePlan(weeks)}
-                >
-                  <Text style={[styles.durationWeeks, { color: colors.buttonText }]}>{weeks}</Text>
-                  <Text style={[styles.durationLabel, { color: colors.buttonText }]}>weeks</Text>
-                </TouchableOpacity>
-              ))}
+            <Text style={[styles.priorityLabel, { color: colors.text }]}>
+              Priority Muscles (optional)
+            </Text>
+            <Text style={[styles.priorityHint, { color: colors.textSecondary }]}>
+              Select up to {MAX_PRIORITY_MUSCLES} muscles for extra volume
+            </Text>
+
+            <View style={styles.muscleChips}>
+              {muscleGroups.map((muscle) => {
+                const isSelected = selectedPriorityMuscles.includes(muscle.id);
+                const isDisabled = !isSelected && selectedPriorityMuscles.length >= MAX_PRIORITY_MUSCLES;
+                return (
+                  <TouchableOpacity
+                    key={muscle.id}
+                    style={[
+                      styles.muscleChip,
+                      {
+                        backgroundColor: isSelected ? colors.primary : colors.surface,
+                        borderColor: isSelected ? colors.primary : colors.border,
+                        opacity: isDisabled ? 0.5 : 1,
+                      },
+                    ]}
+                    onPress={() => togglePriorityMuscle(muscle.id)}
+                    disabled={isDisabled}
+                  >
+                    <Text
+                      style={[
+                        styles.muscleChipText,
+                        { color: isSelected ? colors.buttonText : colors.text },
+                      ]}
+                    >
+                      {muscle.name}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
+
+            <TouchableOpacity
+              style={[styles.startPlanButton, { backgroundColor: colors.primary }]}
+              onPress={handleCreatePlan}
+            >
+              <Text style={[styles.startPlanButtonText, { color: colors.buttonText }]}>
+                Start Plan
+              </Text>
+            </TouchableOpacity>
 
             <Pressable
               style={[styles.cancelButton, { borderColor: colors.border }]}
               onPress={() => {
-                setShowDurationModal(false);
+                setShowPriorityModal(false);
                 setSelectedTemplate(null);
+                setSelectedPriorityMuscles([]);
               }}
             >
               <Text style={[styles.cancelButtonText, { color: colors.text }]}>Cancel</Text>
@@ -774,26 +829,44 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginBottom: 24,
   },
-  durationOptions: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    width: '100%',
-    marginBottom: 24,
+  priorityLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    alignSelf: 'flex-start',
+    marginBottom: 4,
   },
-  durationButton: {
-    flex: 1,
-    marginHorizontal: 6,
-    borderRadius: 8,
-    paddingVertical: 16,
-    alignItems: 'center',
-  },
-  durationWeeks: {
-    fontSize: 24,
-    fontWeight: 'bold',
-  },
-  durationLabel: {
+  priorityHint: {
     fontSize: 12,
-    marginTop: 4,
+    alignSelf: 'flex-start',
+    marginBottom: 16,
+  },
+  muscleChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 24,
+    width: '100%',
+  },
+  muscleChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  muscleChipText: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  startPlanButton: {
+    width: '100%',
+    paddingVertical: 14,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  startPlanButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
   },
   cancelButton: {
     paddingVertical: 12,

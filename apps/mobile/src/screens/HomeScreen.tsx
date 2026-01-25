@@ -20,6 +20,7 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getHomeData } from '../api/workouts';
 import { getLocalHomeData } from '../db/localData';
 import { isOnline } from '../utils/network';
@@ -44,6 +45,7 @@ export default function HomeScreen() {
   const { hasSeenTour, startTour, setTargetMeasurement } = useOnboardingStore();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadingNextWorkout, setLoadingNextWorkout] = useState(true);
   const [data, setData] = useState<HomeData | null>(null);
   const [insights, setInsights] = useState<Insight[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -97,22 +99,43 @@ export default function HomeScreen() {
     try {
       setError(null);
 
-      // 1. Try local DB first (instant)
+      // 1. Try cached nextWorkout from AsyncStorage first (most recent API data)
+      let cachedNextWorkout = null;
+      try {
+        const cached = await AsyncStorage.getItem('cachedNextWorkout');
+        if (cached) {
+          cachedNextWorkout = JSON.parse(cached);
+        }
+      } catch {}
+
+      // 2. Try local DB for stats (instant)
       try {
         const localData = await getLocalHomeData();
         if (localData) {
-          setData(localData);
-          setLoading(false); // Show immediately
+          // Use cached nextWorkout if available, otherwise show loading
+          setData({ ...localData, nextWorkout: cachedNextWorkout });
+          setLoading(false);
+          // Only show loading skeleton if we don't have cached nextWorkout
+          setLoadingNextWorkout(!cachedNextWorkout);
         }
       } catch (localErr) {
         console.log('No local home data');
+        setLoadingNextWorkout(true);
       }
 
-      // 2. Fetch from API in background (if online)
+      // 3. Fetch from API in background (if online)
       if (isOnline()) {
         try {
           const homeData = await getHomeData();
           setData(homeData);
+          setLoadingNextWorkout(false);
+
+          // Cache nextWorkout for next time
+          if (homeData.nextWorkout) {
+            await AsyncStorage.setItem('cachedNextWorkout', JSON.stringify(homeData.nextWorkout));
+          } else {
+            await AsyncStorage.removeItem('cachedNextWorkout');
+          }
 
           // Load XP progress if feature is available
           if (xpFeature.isAvailable) {
@@ -126,14 +149,27 @@ export default function HomeScreen() {
           }
         } catch (apiErr) {
           console.log('API fetch failed, using local data');
+          setLoadingNextWorkout(false);
           if (!data) {
             setError('Failed to load data');
           }
         }
+      } else {
+        // Offline - use cached or local nextWorkout
+        if (!cachedNextWorkout) {
+          try {
+            const localData = await getLocalHomeData();
+            if (localData?.nextWorkout) {
+              setData(prev => prev ? { ...prev, nextWorkout: localData.nextWorkout } : localData);
+            }
+          } catch {}
+        }
+        setLoadingNextWorkout(false);
       }
     } catch (err) {
       console.error('Error loading home data:', err);
       setError('Failed to load data');
+      setLoadingNextWorkout(false);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -252,7 +288,26 @@ export default function HomeScreen() {
         </View>
 
         {/* Next Workout - TOP PRIORITY */}
-        {data?.nextWorkout ? (
+        {loadingNextWorkout ? (
+          // Skeleton while loading next workout from API
+          <View style={[styles.nextWorkoutCard, cardShadow]}>
+            <View style={[styles.nextWorkoutGradient, { backgroundColor: colors.primary, opacity: 0.7 }]}>
+              <View style={styles.nextWorkoutHeader}>
+                <View style={[styles.nextUpBadge, { opacity: 0.5 }]}>
+                  <Text style={styles.nextUpText}>LOADING...</Text>
+                </View>
+              </View>
+              <View style={[styles.skeletonText, { width: 150, height: 24, marginBottom: 8 }]} />
+              <View style={[styles.skeletonText, { width: 200, height: 16 }]} />
+              <View style={styles.startButtonContainer}>
+                <View style={[styles.startButton, { opacity: 0.5 }]}>
+                  <Text style={styles.startButtonText}>START WORKOUT</Text>
+                  <Text style={styles.startButtonArrow}>→</Text>
+                </View>
+              </View>
+            </View>
+          </View>
+        ) : data?.nextWorkout ? (
           <TouchableOpacity
             ref={nextWorkoutRef}
             style={[styles.nextWorkoutCard, cardShadow]}
@@ -514,6 +569,10 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.8)',
     fontSize: 14,
     marginTop: 4,
+  },
+  skeletonText: {
+    backgroundColor: 'rgba(255,255,255,0.3)',
+    borderRadius: 4,
   },
   startButtonContainer: {
     marginTop: 16,

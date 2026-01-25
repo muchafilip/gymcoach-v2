@@ -63,6 +63,10 @@ export const useQuestStore = create<QuestState>()(
               workoutsThisWeek: useProgressStore.getState().workoutsThisWeek,
               weeklyGoalReached: false,
               nextUnlockLevel: useProgressStore.getState().nextUnlockLevel,
+              weekComplete: false,
+              weeksCompleted: 0,
+              isMilestone: false,
+              milestoneWeeks: 0,
             });
           } else {
             // Just update XP without triggering level up modal

@@ -204,6 +204,11 @@ export interface WorkoutCompleteResponse {
   xpToNextLevel: number;
   nextUnlockLevel: number;
   unlockedPlan?: UnlockedPlan;
+  // Milestone celebration (every 4 weeks)
+  weekComplete: boolean;
+  weeksCompleted: number;
+  isMilestone: boolean;
+  milestoneWeeks: number;
 }
 
 export interface XpEvent {

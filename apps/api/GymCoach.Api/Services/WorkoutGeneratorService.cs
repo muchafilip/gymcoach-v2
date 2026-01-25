@@ -18,9 +18,14 @@ public class WorkoutGeneratorService
     /// <summary>
     /// Generates a user workout plan from a template, selecting exercises based on user's equipment
     /// </summary>
-    public async Task<UserWorkoutPlan> GenerateWorkoutPlan(int userId, int templateId, int durationWeeks = 4)
+    /// <param name="priorityMuscleIds">Optional list of 1-2 muscle group IDs to prioritize (extra volume)</param>
+    public async Task<UserWorkoutPlan> GenerateWorkoutPlan(int userId, int templateId, List<int>? priorityMuscleIds = null)
     {
-        Console.WriteLine($"[Generate] Creating new plan with {durationWeeks} weeks");
+        Console.WriteLine($"[Generate] Creating new plan with priority muscles: {string.Join(",", priorityMuscleIds ?? [])}");
+
+        // Validate priority muscles (max 2)
+        if (priorityMuscleIds?.Count > 2)
+            throw new ArgumentException("Maximum 2 priority muscles allowed");
 
         // Deactivate any other active plans for this user
         var activePlans = await _context.UserWorkoutPlans
@@ -48,48 +53,52 @@ public class WorkoutGeneratorService
         if (!userEquipmentIds.Contains(1))
             userEquipmentIds.Add(1);
 
-        // Create the user workout plan
+        // Create the user workout plan (plans are now indefinite - only generate week 1)
         var newPlan = new UserWorkoutPlan
         {
             UserId = userId,
             WorkoutTemplateId = templateId,
             StartDate = DateTime.UtcNow,
-            DurationWeeks = durationWeeks,
+            DurationWeeks = 1, // Start with 1 week, more generated on demand
             IsActive = true
         };
 
         _context.UserWorkoutPlans.Add(newPlan);
         await _context.SaveChangesAsync();
 
-        var templateDaysCount = template.DayTemplates.Count;
-        var totalDays = templateDaysCount * durationWeeks;
-        var dayNumber = 0;
-
-        // Pre-generate ALL workout days for the entire duration
-        for (int week = 1; week <= durationWeeks; week++)
+        // Store priority muscles
+        if (priorityMuscleIds?.Any() == true)
         {
-            foreach (var dayTemplate in template.DayTemplates.OrderBy(d => d.DayNumber))
+            foreach (var muscleId in priorityMuscleIds)
             {
-                dayNumber++;
-                var workoutDay = new UserWorkoutDay
+                _context.UserWorkoutPlanPriorityMuscles.Add(new UserWorkoutPlanPriorityMuscle
                 {
                     UserWorkoutPlanId = newPlan.Id,
-                    DayNumber = dayNumber,
-                    WeekNumber = week,
-                    DayTypeId = dayTemplate.Id,  // Track which template day this is
-                    WorkoutDayTemplateId = dayTemplate.Id
-                };
-
-                _context.UserWorkoutDays.Add(workoutDay);
-                await _context.SaveChangesAsync();
-
-                // Only generate exercises for Week 1
-                // Later weeks are placeholders - exercises generated after prior week completion
-                if (week == 1)
-                {
-                    await GenerateExercisesForDay(workoutDay.Id, dayTemplate, userId, userEquipmentIds, null, template.HasSupersets);
-                }
+                    MuscleGroupId = muscleId
+                });
             }
+            await _context.SaveChangesAsync();
+        }
+
+        var dayNumber = 0;
+
+        // Only generate Week 1 - more weeks generated on demand when week completes
+        foreach (var dayTemplate in template.DayTemplates.OrderBy(d => d.DayNumber))
+        {
+            dayNumber++;
+            var workoutDay = new UserWorkoutDay
+            {
+                UserWorkoutPlanId = newPlan.Id,
+                DayNumber = dayNumber,
+                WeekNumber = 1,
+                DayTypeId = dayTemplate.Id,
+                WorkoutDayTemplateId = dayTemplate.Id
+            };
+
+            _context.UserWorkoutDays.Add(workoutDay);
+            await _context.SaveChangesAsync();
+
+            await GenerateExercisesForDay(workoutDay.Id, dayTemplate, userId, userEquipmentIds, null, template.HasSupersets, priorityMuscleIds);
         }
 
         await _context.SaveChangesAsync();
@@ -105,7 +114,8 @@ public class WorkoutGeneratorService
         int userId,
         List<int> userEquipmentIds,
         int? dayTypeIdForProgression,
-        bool createSupersets = false)
+        bool createSupersets = false,
+        List<int>? priorityMuscleIds = null)
     {
         // Check if this is a custom template with pre-defined exercises
         var customExercises = await _context.CustomTemplateExercises
@@ -116,13 +126,13 @@ public class WorkoutGeneratorService
 
         if (customExercises.Any())
         {
-            // Use custom template exercises directly
+            // Use custom template exercises directly (no priority muscle support for custom templates)
             await GenerateFromCustomTemplate(workoutDayId, customExercises, userId, dayTypeIdForProgression);
         }
         else
         {
             // Use random selection based on target muscles (system templates)
-            await GenerateFromSystemTemplate(workoutDayId, dayTemplate, userId, userEquipmentIds, dayTypeIdForProgression, createSupersets);
+            await GenerateFromSystemTemplate(workoutDayId, dayTemplate, userId, userEquipmentIds, dayTypeIdForProgression, createSupersets, priorityMuscleIds);
         }
     }
 
@@ -173,11 +183,14 @@ public class WorkoutGeneratorService
         int userId,
         List<int> userEquipmentIds,
         int? dayTypeIdForProgression,
-        bool createSupersets)
+        bool createSupersets,
+        List<int>? priorityMuscleIds = null)
     {
         int orderIndex = 0;
         // Track generated exercises by muscle group for superset pairing
         var exercisesByMuscle = new Dictionary<int, List<int>>(); // MuscleGroupId -> List of ExerciseLogIds
+        // Track which exercises were already selected (to avoid duplicates for priority muscles)
+        var selectedExerciseIds = new HashSet<int>();
 
         foreach (var targetMuscle in dayTemplate.TargetMuscles)
         {
@@ -215,35 +228,42 @@ public class WorkoutGeneratorService
 
             foreach (var exercise in selectedExercises)
             {
-                var exerciseLog = new UserExerciseLog
+                selectedExerciseIds.Add(exercise.Id);
+                orderIndex = await AddExerciseToDay(workoutDayId, exercise, userId, dayTypeIdForProgression, orderIndex, exercisesByMuscle, targetMuscle.MuscleGroupId);
+            }
+        }
+
+        // Add +1 exercise for each priority muscle that's targeted on this day
+        if (priorityMuscleIds != null)
+        {
+            foreach (var priorityMuscleId in priorityMuscleIds)
+            {
+                // Check if this muscle is already targeted on this day
+                if (dayTemplate.TargetMuscles.Any(tm => tm.MuscleGroupId == priorityMuscleId))
                 {
-                    UserWorkoutDayId = workoutDayId,
-                    ExerciseId = exercise.Id,
-                    OrderIndex = orderIndex++
-                };
+                    // Add 1 extra exercise for this priority muscle
+                    var availableExercises = await _context.Exercises
+                        .Include(e => e.RequiredEquipment)
+                        .Where(e =>
+                            e.PrimaryMuscleGroupId == priorityMuscleId &&
+                            !selectedExerciseIds.Contains(e.Id) && // Exclude already selected
+                            e.RequiredEquipment.All(re => userEquipmentIds.Contains(re.EquipmentId)))
+                        .ToListAsync();
 
-                _context.UserExerciseLogs.Add(exerciseLog);
-                await _context.SaveChangesAsync();
+                    var priorityExercise = availableExercises
+                        .OrderBy(_ => Guid.NewGuid())
+                        .FirstOrDefault();
 
-                exercisesByMuscle[targetMuscle.MuscleGroupId].Add(exerciseLog.Id);
-
-                // Get progression target - use dayTypeId for same-day progression
-                var target = await _progressionService.CalculateNextTarget(userId, exercise.Id, dayTypeIdForProgression);
-
-                for (int setNum = 1; setNum <= 3; setNum++)
-                {
-                    var set = new ExerciseSet
+                    if (priorityExercise != null)
                     {
-                        UserExerciseLogId = exerciseLog.Id,
-                        SetNumber = setNum,
-                        TargetReps = target.TargetReps,
-                        Weight = target.Weight,
-                        Completed = false
-                    };
-                    _context.ExerciseSets.Add(set);
+                        Console.WriteLine($"[Generate] Adding priority exercise for muscle {priorityMuscleId}: {priorityExercise.Name}");
+                        selectedExerciseIds.Add(priorityExercise.Id);
+                        orderIndex = await AddExerciseToDay(workoutDayId, priorityExercise, userId, dayTypeIdForProgression, orderIndex, exercisesByMuscle, priorityMuscleId);
+                    }
                 }
             }
         }
+
         await _context.SaveChangesAsync();
 
         // Create supersets if template requires it
@@ -251,6 +271,53 @@ public class WorkoutGeneratorService
         {
             await CreateSupersetsForDay(workoutDayId, exercisesByMuscle);
         }
+    }
+
+    /// <summary>
+    /// Helper to add an exercise to a workout day
+    /// </summary>
+    private async Task<int> AddExerciseToDay(
+        int workoutDayId,
+        Exercise exercise,
+        int userId,
+        int? dayTypeIdForProgression,
+        int orderIndex,
+        Dictionary<int, List<int>> exercisesByMuscle,
+        int muscleGroupId)
+    {
+        var exerciseLog = new UserExerciseLog
+        {
+            UserWorkoutDayId = workoutDayId,
+            ExerciseId = exercise.Id,
+            OrderIndex = orderIndex++
+        };
+
+        _context.UserExerciseLogs.Add(exerciseLog);
+        await _context.SaveChangesAsync();
+
+        if (!exercisesByMuscle.ContainsKey(muscleGroupId))
+        {
+            exercisesByMuscle[muscleGroupId] = [];
+        }
+        exercisesByMuscle[muscleGroupId].Add(exerciseLog.Id);
+
+        // Get progression target
+        var target = await _progressionService.CalculateNextTarget(userId, exercise.Id, dayTypeIdForProgression);
+
+        for (int setNum = 1; setNum <= 3; setNum++)
+        {
+            var set = new ExerciseSet
+            {
+                UserExerciseLogId = exerciseLog.Id,
+                SetNumber = setNum,
+                TargetReps = target.TargetReps,
+                Weight = target.Weight,
+                Completed = false
+            };
+            _context.ExerciseSets.Add(set);
+        }
+
+        return orderIndex;
     }
 
     /// <summary>
@@ -321,9 +388,13 @@ public class WorkoutGeneratorService
             .Include(p => p.WorkoutTemplate)
                 .ThenInclude(t => t.DayTemplates)
                     .ThenInclude(d => d.TargetMuscles)
+            .Include(p => p.PriorityMuscles)
             .FirstOrDefaultAsync(p => p.Id == planId);
 
         if (plan == null) return false;
+
+        // Get priority muscle IDs for this plan
+        var priorityMuscleIds = plan.PriorityMuscles.Select(pm => pm.MuscleGroupId).ToList();
 
         // Get all days for this week (no exercises yet)
         var weekDays = plan.WorkoutDays
@@ -372,7 +443,7 @@ public class WorkoutGeneratorService
                     if (!userEquipmentIds.Contains(1))
                         userEquipmentIds.Add(1);
 
-                    await GenerateExercisesForDay(day.Id, dayTemplate, plan.UserId, userEquipmentIds, day.DayTypeId, plan.WorkoutTemplate.HasSupersets);
+                    await GenerateExercisesForDay(day.Id, dayTemplate, plan.UserId, userEquipmentIds, day.DayTypeId, plan.WorkoutTemplate.HasSupersets, priorityMuscleIds.Any() ? priorityMuscleIds : null);
                 }
             }
         }
@@ -474,36 +545,72 @@ public class WorkoutGeneratorService
     {
         var plan = await _context.UserWorkoutPlans
             .Include(p => p.WorkoutDays)
+            .Include(p => p.WorkoutTemplate)
+                .ThenInclude(t => t.DayTemplates)
             .FirstOrDefaultAsync(p => p.Id == planId);
 
         if (plan == null) return false;
 
-        // Find the current week (lowest week with incomplete days)
+        // Find the max completed week
+        var maxWeek = plan.WorkoutDays.Max(d => d.WeekNumber);
+        var currentWeekDays = plan.WorkoutDays.Where(d => d.WeekNumber == maxWeek).ToList();
+        var allCurrentWeekComplete = currentWeekDays.All(d => d.CompletedAt != null);
+
+        if (allCurrentWeekComplete)
+        {
+            // Current week is complete - create next week
+            var nextWeek = maxWeek + 1;
+            Console.WriteLine($"[Generate] Week {maxWeek} complete, generating week {nextWeek}");
+
+            // Create placeholder days for next week
+            var templateDays = plan.WorkoutTemplate.DayTemplates.OrderBy(d => d.DayNumber).ToList();
+            var baseDayNumber = plan.WorkoutDays.Max(d => d.DayNumber);
+
+            foreach (var dayTemplate in templateDays)
+            {
+                baseDayNumber++;
+                var workoutDay = new UserWorkoutDay
+                {
+                    UserWorkoutPlanId = plan.Id,
+                    DayNumber = baseDayNumber,
+                    WeekNumber = nextWeek,
+                    DayTypeId = dayTemplate.Id,
+                    WorkoutDayTemplateId = dayTemplate.Id
+                };
+                _context.UserWorkoutDays.Add(workoutDay);
+            }
+            await _context.SaveChangesAsync();
+
+            // Update plan duration
+            plan.DurationWeeks = nextWeek;
+            await _context.SaveChangesAsync();
+
+            // Generate exercises for the new week
+            return await GenerateNextWeekWorkouts(planId, nextWeek);
+        }
+
+        // Check if there are any weeks with days but no exercises (edge case)
         var incompleteDaysByWeek = plan.WorkoutDays
             .Where(d => d.CompletedAt == null)
             .GroupBy(d => d.WeekNumber)
             .OrderBy(g => g.Key)
             .FirstOrDefault();
 
-        if (incompleteDaysByWeek == null)
+        if (incompleteDaysByWeek != null)
         {
-            // All weeks complete
-            return false;
-        }
+            var currentWeek = incompleteDaysByWeek.Key;
+            var previousWeek = currentWeek - 1;
 
-        var currentWeek = incompleteDaysByWeek.Key;
+            if (previousWeek >= 1)
+            {
+                var previousWeekDays = plan.WorkoutDays.Where(d => d.WeekNumber == previousWeek).ToList();
+                var allPreviousCompleted = previousWeekDays.All(d => d.CompletedAt != null);
 
-        // Check if all days in the previous week are completed
-        var previousWeek = currentWeek - 1;
-        if (previousWeek < 1) return false;
-
-        var previousWeekDays = plan.WorkoutDays.Where(d => d.WeekNumber == previousWeek).ToList();
-        var allPreviousCompleted = previousWeekDays.All(d => d.CompletedAt != null);
-
-        if (allPreviousCompleted)
-        {
-            // Generate exercises for next week
-            return await GenerateNextWeekWorkouts(planId, currentWeek);
+                if (allPreviousCompleted)
+                {
+                    return await GenerateNextWeekWorkouts(planId, currentWeek);
+                }
+            }
         }
 
         return false;

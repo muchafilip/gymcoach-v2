@@ -51,6 +51,7 @@ export default function SupersetModal({
 
   useEffect(() => {
     if (visible) {
+      console.log('[SupersetModal] Modal opened, dayId:', dayId, 'exercises count:', exercises.length);
       loadData();
       setSearchQuery('');
       setSelectedExercises([]);
@@ -67,6 +68,7 @@ export default function SupersetModal({
         getAllExercises(),
       ]);
 
+      console.log('[SupersetModal] Loaded suggestions:', suggestionsResponse.data?.length ?? 0, suggestionsResponse.data);
       setSuggestions(suggestionsResponse.data);
 
       // Build list of exercises - mark which ones are in the workout
@@ -95,13 +97,16 @@ export default function SupersetModal({
   };
 
   const handleCreateSuggested = async (suggestion: SupersetSuggestion) => {
+    console.log('[Superset] handleCreateSuggested called with:', JSON.stringify(suggestion));
     setCreating(suggestion.templateId);
     try {
-      await apiClient.post('/supersets', {
+      console.log('[Superset] Calling POST /supersets with:', { exerciseLogAId: suggestion.exerciseAId, exerciseLogBId: suggestion.exerciseBId });
+      const response = await apiClient.post('/supersets', {
         exerciseLogAId: suggestion.exerciseAId,
         exerciseLogBId: suggestion.exerciseBId,
         isManual: false,
       });
+      console.log('[Superset] Suggested superset created:', response.data);
       onSupersetCreated();
       onClose();
     } catch (error: unknown) {
@@ -114,13 +119,19 @@ export default function SupersetModal({
   };
 
   const handleManualSelect = (exercise: SelectableExercise) => {
+    console.log('[SupersetModal] handleManualSelect called:', exercise.name, 'supersetGroupId:', exercise.supersetGroupId);
     // Don't allow selecting exercises already in a superset
-    if (exercise.supersetGroupId) return;
+    if (exercise.supersetGroupId) {
+      console.log('[SupersetModal] Exercise already in superset, skipping');
+      return;
+    }
 
     const isSelected = selectedExercises.some((e) => e.exerciseId === exercise.exerciseId);
     if (isSelected) {
+      console.log('[SupersetModal] Deselecting exercise');
       setSelectedExercises(selectedExercises.filter((e) => e.exerciseId !== exercise.exerciseId));
     } else {
+      console.log('[SupersetModal] Selecting exercise, new count:', selectedExercises.length + 1);
       setSelectedExercises([...selectedExercises, exercise]);
     }
   };
@@ -255,7 +266,7 @@ export default function SupersetModal({
             </TouchableOpacity>
           </View>
 
-          <ScrollView style={styles.content} keyboardShouldPersistTaps="handled">
+          <ScrollView style={styles.content} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 80 }}>
             {loading ? (
               <ActivityIndicator size="large" color={colors.primary} style={styles.loader} />
             ) : manualMode ? (
@@ -284,65 +295,48 @@ export default function SupersetModal({
                     </Text>
                   </View>
                 ) : (
-                  <>
-                    {sortedExercises.map((exercise) => {
-                      const isSelected = selectedExercises.some((e) => e.exerciseId === exercise.exerciseId);
-                      const selectionIndex = selectedExercises.findIndex((e) => e.exerciseId === exercise.exerciseId);
-                      return (
-                        <TouchableOpacity
-                          key={`${exercise.exerciseId}-${exercise.isInWorkout}`}
-                          style={[
-                            styles.exerciseItem,
-                            { backgroundColor: colors.surface, borderColor: colors.border },
-                            isSelected && {
-                              borderColor: colors.primary,
-                              backgroundColor: colors.primaryLight,
-                            },
-                          ]}
-                          onPress={() => handleManualSelect(exercise)}
-                          disabled={creating !== null}
-                        >
-                          {isSelected && (
-                            <View style={[styles.selectionBadge, { backgroundColor: colors.primary }]}>
-                              <Text style={styles.selectionBadgeText}>{selectionIndex + 1}</Text>
-                            </View>
-                          )}
-                          <View style={styles.exerciseInfo}>
-                            <Text style={[styles.exerciseName, { color: colors.text }]}>
-                              {exercise.name}
-                            </Text>
-                            <View style={styles.exerciseMeta}>
-                              {exercise.primaryMuscleGroup && (
-                                <Text style={[styles.muscleGroup, { color: colors.textSecondary }]}>
-                                  {exercise.primaryMuscleGroup}
-                                </Text>
-                              )}
-                              {exercise.isInWorkout && (
-                                <View style={[styles.inWorkoutBadge, { backgroundColor: colors.success }]}>
-                                  <Text style={styles.inWorkoutText}>In workout</Text>
-                                </View>
-                              )}
-                            </View>
-                          </View>
-                        </TouchableOpacity>
-                      );
-                    })}
-                    {selectedExercises.length >= 2 && (
+                  sortedExercises.map((exercise) => {
+                    const isSelected = selectedExercises.some((e) => e.exerciseId === exercise.exerciseId);
+                    const selectionIndex = selectedExercises.findIndex((e) => e.exerciseId === exercise.exerciseId);
+                    return (
                       <TouchableOpacity
-                        style={[styles.createButton, { backgroundColor: colors.success }]}
-                        onPress={handleCreateManualSuperset}
+                        key={`${exercise.exerciseId}-${exercise.isInWorkout}`}
+                        style={[
+                          styles.exerciseItem,
+                          { backgroundColor: colors.surface, borderColor: colors.border },
+                          isSelected && {
+                            borderColor: colors.primary,
+                            backgroundColor: colors.primaryLight,
+                          },
+                        ]}
+                        onPress={() => handleManualSelect(exercise)}
                         disabled={creating !== null}
                       >
-                        {creating === -1 ? (
-                          <ActivityIndicator size="small" color="#FFF" />
-                        ) : (
-                          <Text style={styles.createButtonText}>
-                            Create {getSetLabel()} ({selectedExercises.length} exercises)
-                          </Text>
+                        {isSelected && (
+                          <View style={[styles.selectionBadge, { backgroundColor: colors.primary }]}>
+                            <Text style={styles.selectionBadgeText}>{selectionIndex + 1}</Text>
+                          </View>
                         )}
+                        <View style={styles.exerciseInfo}>
+                          <Text style={[styles.exerciseName, { color: colors.text }]}>
+                            {exercise.name}
+                          </Text>
+                          <View style={styles.exerciseMeta}>
+                            {exercise.primaryMuscleGroup && (
+                              <Text style={[styles.muscleGroup, { color: colors.textSecondary }]}>
+                                {exercise.primaryMuscleGroup}
+                              </Text>
+                            )}
+                            {exercise.isInWorkout && (
+                              <View style={[styles.inWorkoutBadge, { backgroundColor: colors.success }]}>
+                                <Text style={styles.inWorkoutText}>In workout</Text>
+                              </View>
+                            )}
+                          </View>
+                        </View>
                       </TouchableOpacity>
-                    )}
-                  </>
+                    );
+                  })
                 )}
               </View>
             ) : (
@@ -361,7 +355,10 @@ export default function SupersetModal({
                         styles.suggestionItem,
                         { backgroundColor: colors.surface, borderColor: colors.border },
                       ]}
-                      onPress={() => handleCreateSuggested(suggestion)}
+                      onPress={() => {
+                        console.log('[SupersetModal] Suggestion tapped:', suggestion.templateName, 'creating:', creating);
+                        handleCreateSuggested(suggestion);
+                      }}
                       disabled={creating !== null}
                     >
                       <View style={[styles.suggestionBadge, { backgroundColor: colors.success }]}>
@@ -385,6 +382,28 @@ export default function SupersetModal({
               </View>
             )}
           </ScrollView>
+
+          {/* Fixed Create button at bottom - only show in manual mode with 2+ selections */}
+          {manualMode && selectedExercises.length >= 2 && (
+            <View style={[styles.bottomButtonContainer, { backgroundColor: colors.card, borderTopColor: colors.border }]}>
+              <TouchableOpacity
+                style={[styles.createButton, { backgroundColor: colors.success }]}
+                onPress={() => {
+                  console.log('[SupersetModal] Create button tapped, selectedExercises:', selectedExercises.length, 'creating:', creating);
+                  handleCreateManualSuperset();
+                }}
+                disabled={creating !== null}
+              >
+                {creating === -1 ? (
+                  <ActivityIndicator size="small" color="#FFF" />
+                ) : (
+                  <Text style={styles.createButtonText}>
+                    Create {getSetLabel()} ({selectedExercises.length} exercises)
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
       </View>
     </Modal>
@@ -534,11 +553,14 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
   },
+  bottomButtonContainer: {
+    padding: 16,
+    borderTopWidth: 1,
+  },
   createButton: {
     padding: 16,
     borderRadius: 10,
     alignItems: 'center',
-    marginTop: 16,
   },
   createButtonText: {
     color: '#FFF',

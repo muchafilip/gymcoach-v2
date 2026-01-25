@@ -17,6 +17,19 @@ public class UserWorkoutPlan
 
     // Navigation
     public ICollection<UserWorkoutDay> WorkoutDays { get; set; } = [];
+    public ICollection<UserWorkoutPlanPriorityMuscle> PriorityMuscles { get; set; } = [];
+}
+
+/// <summary>
+/// Join table for user's priority muscle groups (extra volume targeting)
+/// </summary>
+public class UserWorkoutPlanPriorityMuscle
+{
+    public int UserWorkoutPlanId { get; set; }
+    public UserWorkoutPlan UserWorkoutPlan { get; set; } = null!;
+
+    public int MuscleGroupId { get; set; }
+    public MuscleGroup MuscleGroup { get; set; } = null!;
 }
 
 public class UserWorkoutDay

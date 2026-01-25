@@ -23,6 +23,7 @@ public class GymCoachDbContext : DbContext
     // User data
     public DbSet<User> Users => Set<User>();
     public DbSet<UserWorkoutPlan> UserWorkoutPlans => Set<UserWorkoutPlan>();
+    public DbSet<UserWorkoutPlanPriorityMuscle> UserWorkoutPlanPriorityMuscles => Set<UserWorkoutPlanPriorityMuscle>();
     public DbSet<UserWorkoutDay> UserWorkoutDays => Set<UserWorkoutDay>();
     public DbSet<UserExerciseLog> UserExerciseLogs => Set<UserExerciseLog>();
     public DbSet<ExerciseSet> ExerciseSets => Set<ExerciseSet>();
@@ -76,6 +77,22 @@ public class GymCoachDbContext : DbContext
         // User <-> Equipment - many-to-many
         modelBuilder.Entity<UserEquipment>()
             .HasKey(u => new { u.UserId, u.EquipmentId });
+
+        // UserWorkoutPlan <-> MuscleGroup (priority muscles) - many-to-many
+        modelBuilder.Entity<UserWorkoutPlanPriorityMuscle>()
+            .HasKey(p => new { p.UserWorkoutPlanId, p.MuscleGroupId });
+
+        modelBuilder.Entity<UserWorkoutPlanPriorityMuscle>()
+            .HasOne(p => p.UserWorkoutPlan)
+            .WithMany(plan => plan.PriorityMuscles)
+            .HasForeignKey(p => p.UserWorkoutPlanId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<UserWorkoutPlanPriorityMuscle>()
+            .HasOne(p => p.MuscleGroup)
+            .WithMany()
+            .HasForeignKey(p => p.MuscleGroupId)
+            .OnDelete(DeleteBehavior.Restrict);
 
         // User indexes
         modelBuilder.Entity<User>()

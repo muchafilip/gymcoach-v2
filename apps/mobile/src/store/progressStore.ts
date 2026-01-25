@@ -29,10 +29,15 @@ interface ProgressState {
   // Unlocked plan (shown in level up modal)
   unlockedPlan: UnlockedPlan | null;
 
+  // Milestone celebration (every 4 weeks)
+  showMilestoneModal: boolean;
+  milestoneWeeks: number;
+
   // Actions
   loadProgress: () => Promise<void>;
   updateFromWorkoutComplete: (response: WorkoutCompleteResponse) => void;
   dismissLevelUpModal: () => void;
+  dismissMilestoneModal: () => void;
   resetLastXpGain: () => void;
 }
 
@@ -56,6 +61,8 @@ export const useProgressStore = create<ProgressState>()(
       lastXpGain: 0,
       isLoading: false,
       unlockedPlan: null,
+      showMilestoneModal: false,
+      milestoneWeeks: 0,
 
       loadProgress: async () => {
         set({ isLoading: true });
@@ -96,6 +103,9 @@ export const useProgressStore = create<ProgressState>()(
           newLevel: response.leveledUp ? response.level : null,
           nextUnlockLevel: response.nextUnlockLevel || get().nextUnlockLevel,
           unlockedPlan: response.unlockedPlan || null,
+          // Milestone celebration (don't show if level up is also showing)
+          showMilestoneModal: response.isMilestone && !response.leveledUp,
+          milestoneWeeks: response.isMilestone ? response.milestoneWeeks : 0,
         });
 
         // Update unlocked plans count if a plan was unlocked
@@ -117,7 +127,19 @@ export const useProgressStore = create<ProgressState>()(
       },
 
       dismissLevelUpModal: () => {
-        set({ showLevelUpModal: false, newLevel: null, unlockedPlan: null });
+        // After dismissing level up, show milestone if it was pending
+        const state = get();
+        const pendingMilestone = state.milestoneWeeks > 0 && !state.showMilestoneModal;
+        set({
+          showLevelUpModal: false,
+          newLevel: null,
+          unlockedPlan: null,
+          showMilestoneModal: pendingMilestone,
+        });
+      },
+
+      dismissMilestoneModal: () => {
+        set({ showMilestoneModal: false, milestoneWeeks: 0 });
       },
 
       resetLastXpGain: () => {
