@@ -89,6 +89,7 @@ public class WorkoutGeneratorService
         }
 
         var dayNumber = 0;
+        var workoutDays = new List<(UserWorkoutDay day, WorkoutDayTemplate template)>();
 
         // Only generate Week 1 - more weeks generated on demand when week completes
         foreach (var dayTemplate in template.DayTemplates.OrderBy(d => d.DayNumber))
@@ -104,12 +105,18 @@ public class WorkoutGeneratorService
             };
 
             _context.UserWorkoutDays.Add(workoutDay);
-            await _context.SaveChangesAsync();
+            workoutDays.Add((workoutDay, dayTemplate));
+        }
 
+        // Single save for all days
+        await _context.SaveChangesAsync();
+
+        // Now generate exercises for each day (they need the day IDs)
+        foreach (var (workoutDay, dayTemplate) in workoutDays)
+        {
             await GenerateExercisesForDay(workoutDay.Id, dayTemplate, userId, userEquipmentIds, null, template.HasSupersets, priorityMuscleIds);
         }
 
-        await _context.SaveChangesAsync();
         return newPlan;
     }
 
@@ -196,7 +203,7 @@ public class WorkoutGeneratorService
     {
         int orderIndex = 0;
         // Track generated exercises by muscle group for superset pairing
-        var exercisesByMuscle = new Dictionary<int, List<int>>(); // MuscleGroupId -> List of ExerciseLogIds
+        var exerciseLogs = new List<(int muscleGroupId, UserExerciseLog log)>();
         // Track which exercises were already selected (to avoid duplicates for priority muscles)
         var selectedExerciseIds = new HashSet<int>();
 
@@ -229,15 +236,12 @@ public class WorkoutGeneratorService
                 selectedExercises.AddRange(secondaryExercises);
             }
 
-            if (!exercisesByMuscle.ContainsKey(targetMuscle.MuscleGroupId))
-            {
-                exercisesByMuscle[targetMuscle.MuscleGroupId] = [];
-            }
-
             foreach (var exercise in selectedExercises)
             {
                 selectedExerciseIds.Add(exercise.Id);
-                orderIndex = await AddExerciseToDay(workoutDayId, exercise, userId, dayTypeIdForProgression, orderIndex, exercisesByMuscle, targetMuscle.MuscleGroupId);
+                var (newOrderIndex, exerciseLog) = await AddExerciseToDay(workoutDayId, exercise, userId, dayTypeIdForProgression, orderIndex, targetMuscle.MuscleGroupId);
+                orderIndex = newOrderIndex;
+                exerciseLogs.Add((targetMuscle.MuscleGroupId, exerciseLog));
             }
         }
 
@@ -266,31 +270,36 @@ public class WorkoutGeneratorService
                     {
                         Console.WriteLine($"[Generate] Adding priority exercise for muscle {priorityMuscleId}: {priorityExercise.Name}");
                         selectedExerciseIds.Add(priorityExercise.Id);
-                        orderIndex = await AddExerciseToDay(workoutDayId, priorityExercise, userId, dayTypeIdForProgression, orderIndex, exercisesByMuscle, priorityMuscleId);
+                        var (newOrderIndex, exerciseLog) = await AddExerciseToDay(workoutDayId, priorityExercise, userId, dayTypeIdForProgression, orderIndex, priorityMuscleId);
+                        orderIndex = newOrderIndex;
+                        exerciseLogs.Add((priorityMuscleId, exerciseLog));
                     }
                 }
             }
         }
 
+        // Single save for all exercises and sets
         await _context.SaveChangesAsync();
 
-        // Create supersets if template requires it
+        // Create supersets if template requires it (needs IDs, so must be after save)
         if (createSupersets)
         {
+            var exercisesByMuscle = exerciseLogs
+                .GroupBy(x => x.muscleGroupId)
+                .ToDictionary(g => g.Key, g => g.Select(x => x.log.Id).ToList());
             await CreateSupersetsForDay(workoutDayId, exercisesByMuscle);
         }
     }
 
     /// <summary>
-    /// Helper to add an exercise to a workout day
+    /// Helper to add an exercise to a workout day (no save - caller must save)
     /// </summary>
-    private async Task<int> AddExerciseToDay(
+    private async Task<(int orderIndex, UserExerciseLog exerciseLog)> AddExerciseToDay(
         int workoutDayId,
         Exercise exercise,
         int userId,
         int? dayTypeIdForProgression,
         int orderIndex,
-        Dictionary<int, List<int>> exercisesByMuscle,
         int muscleGroupId)
     {
         var exerciseLog = new UserExerciseLog
@@ -301,13 +310,7 @@ public class WorkoutGeneratorService
         };
 
         _context.UserExerciseLogs.Add(exerciseLog);
-        await _context.SaveChangesAsync();
-
-        if (!exercisesByMuscle.ContainsKey(muscleGroupId))
-        {
-            exercisesByMuscle[muscleGroupId] = [];
-        }
-        exercisesByMuscle[muscleGroupId].Add(exerciseLog.Id);
+        // Don't save here - let caller batch saves
 
         // Get progression target
         var target = await _progressionService.CalculateNextTarget(userId, exercise.Id, dayTypeIdForProgression);
@@ -316,7 +319,7 @@ public class WorkoutGeneratorService
         {
             var set = new ExerciseSet
             {
-                UserExerciseLogId = exerciseLog.Id,
+                UserExerciseLog = exerciseLog, // Use navigation property instead of ID
                 SetNumber = setNum,
                 TargetReps = target.TargetReps,
                 Weight = target.Weight,
@@ -325,7 +328,7 @@ public class WorkoutGeneratorService
             _context.ExerciseSets.Add(set);
         }
 
-        return orderIndex;
+        return (orderIndex, exerciseLog);
     }
 
     /// <summary>
