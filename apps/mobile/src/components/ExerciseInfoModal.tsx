@@ -230,8 +230,8 @@ const styles = StyleSheet.create({
   container: {
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    minHeight: 400,
-    maxHeight: '90%',
+    flex: 1,
+    marginTop: 350,
   },
   header: {
     flexDirection: 'row',
