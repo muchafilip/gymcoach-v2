@@ -514,7 +514,7 @@ public class WorkoutsController : ControllerBase
                 .CountAsync();
 
             Console.WriteLine($"[CompleteDay] Free user completed {completedToday} workouts today");
-            if (completedToday >= 5) // Increased for testing
+            if (completedToday >= 100) // Increased for testing
             {
                 return BadRequest(new
                 {
