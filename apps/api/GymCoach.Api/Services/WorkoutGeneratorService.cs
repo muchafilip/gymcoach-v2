@@ -513,6 +513,9 @@ public class WorkoutGeneratorService
             .Where(el => el.SupersetGroupId != null)
             .MaxAsync(el => (int?)el.SupersetGroupId) ?? 0;
 
+        // Build all exercise logs first, then save in batch
+        var exerciseLogsWithSets = new List<(UserExerciseLog log, List<ExerciseSet> sets, int muscleGroupId)>();
+
         foreach (var previousLog in previousDay.ExerciseLogs.OrderBy(el => el.OrderIndex))
         {
             // Create new exercise log with same exercise
@@ -536,15 +539,6 @@ public class WorkoutGeneratorService
             }
 
             _context.UserExerciseLogs.Add(exerciseLog);
-            await _context.SaveChangesAsync();
-
-            // Track for potential superset creation
-            var muscleGroupId = previousLog.Exercise.PrimaryMuscleGroupId;
-            if (!exercisesByMuscle.ContainsKey(muscleGroupId))
-            {
-                exercisesByMuscle[muscleGroupId] = [];
-            }
-            exercisesByMuscle[muscleGroupId].Add(exerciseLog.Id);
 
             // Get last completed weight for this exercise from previous week
             var completedSets = previousLog.Sets.Where(s => s.Completed).ToList();
@@ -554,31 +548,49 @@ public class WorkoutGeneratorService
                 .FirstOrDefault()?.Weight;
 
             // Check if user hit all target reps for progressive overload
-            // All sets must be completed and actual reps >= target reps
             var shouldProgressReps = completedSets.Count > 0 &&
                 completedSets.Count == previousLog.Sets.Count &&
                 completedSets.All(s => s.ActualReps.HasValue && s.ActualReps >= s.TargetReps);
 
-            // Copy sets with progressive target reps
+            // Build sets (using navigation property for batch insert)
+            var sets = new List<ExerciseSet>();
             foreach (var previousSet in previousLog.Sets.OrderBy(s => s.SetNumber))
             {
-                // Calculate new target reps: increase by 1 if all sets were hit, otherwise keep same
                 var newTargetReps = previousSet.TargetReps;
                 if (shouldProgressReps && newTargetReps < MAX_TARGET_REPS)
                 {
                     newTargetReps = previousSet.TargetReps + 1;
                 }
 
-                var set = new ExerciseSet
+                sets.Add(new ExerciseSet
                 {
-                    UserExerciseLogId = exerciseLog.Id,
+                    UserExerciseLog = exerciseLog, // Use navigation property
                     SetNumber = previousSet.SetNumber,
                     TargetReps = newTargetReps,
-                    Weight = lastWeight ?? previousSet.Weight, // Use last week's weight
+                    Weight = lastWeight ?? previousSet.Weight,
                     Completed = false
-                };
+                });
+            }
+
+            exerciseLogsWithSets.Add((exerciseLog, sets, previousLog.Exercise.PrimaryMuscleGroupId));
+        }
+
+        // Single save for all exercise logs (generates IDs)
+        await _context.SaveChangesAsync();
+
+        // Now add sets and track muscle groups
+        foreach (var (log, sets, muscleGroupId) in exerciseLogsWithSets)
+        {
+            foreach (var set in sets)
+            {
                 _context.ExerciseSets.Add(set);
             }
+
+            if (!exercisesByMuscle.ContainsKey(muscleGroupId))
+            {
+                exercisesByMuscle[muscleGroupId] = [];
+            }
+            exercisesByMuscle[muscleGroupId].Add(log.Id);
         }
 
         await _context.SaveChangesAsync();
