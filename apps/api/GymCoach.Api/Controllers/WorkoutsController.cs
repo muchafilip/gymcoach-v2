@@ -52,7 +52,14 @@ public class WorkoutsController : ControllerBase
         }
         catch (ArgumentException ex)
         {
+            Console.WriteLine($"[Generate] ArgumentException: {ex.Message}");
             return BadRequest(ex.Message);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Generate] ERROR: {ex.GetType().Name}: {ex.Message}");
+            Console.WriteLine($"[Generate] StackTrace: {ex.StackTrace}");
+            throw;
         }
     }
 

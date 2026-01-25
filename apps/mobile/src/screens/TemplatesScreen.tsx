@@ -72,13 +72,11 @@ export default function TemplatesScreen() {
 
   const loadData = async () => {
     try {
-      const [templatesData, plansData, muscleGroupsData] = await Promise.all([
+      const [templatesData, plansData] = await Promise.all([
         fetchTemplates(),
         getUserPlans(),
-        fetchMuscleGroups(),
       ]);
       setTemplates(templatesData);
-      setMuscleGroups(muscleGroupsData);
 
       // Sort plans: active first, then by start date
       const sortedPlans = [...plansData].sort((a: UserPlan, b: UserPlan) => {
@@ -91,6 +89,15 @@ export default function TemplatesScreen() {
       // Find active plan from the plans data
       const activePlan = plansData.find((p: UserPlan) => p.isActive);
       setActivePlanId(activePlan?.id || null);
+
+      // Load muscle groups separately (non-critical)
+      try {
+        const muscleGroupsData = await fetchMuscleGroups();
+        setMuscleGroups(muscleGroupsData);
+      } catch (mgError) {
+        console.warn('Failed to load muscle groups:', mgError);
+        // Continue without muscle groups - user can still start plans
+      }
     } catch (error) {
       console.error('Error loading data:', error);
       alert('Failed to load data');

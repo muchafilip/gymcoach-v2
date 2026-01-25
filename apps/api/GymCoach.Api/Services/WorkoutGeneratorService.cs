@@ -66,18 +66,26 @@ public class WorkoutGeneratorService
         _context.UserWorkoutPlans.Add(newPlan);
         await _context.SaveChangesAsync();
 
-        // Store priority muscles
+        // Store priority muscles (gracefully handle if table doesn't exist yet)
         if (priorityMuscleIds?.Any() == true)
         {
-            foreach (var muscleId in priorityMuscleIds)
+            try
             {
-                _context.UserWorkoutPlanPriorityMuscles.Add(new UserWorkoutPlanPriorityMuscle
+                foreach (var muscleId in priorityMuscleIds)
                 {
-                    UserWorkoutPlanId = newPlan.Id,
-                    MuscleGroupId = muscleId
-                });
+                    _context.UserWorkoutPlanPriorityMuscles.Add(new UserWorkoutPlanPriorityMuscle
+                    {
+                        UserWorkoutPlanId = newPlan.Id,
+                        MuscleGroupId = muscleId
+                    });
+                }
+                await _context.SaveChangesAsync();
             }
-            await _context.SaveChangesAsync();
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Generate] Warning: Could not save priority muscles: {ex.Message}");
+                // Continue without priority muscles - plan will still work
+            }
         }
 
         var dayNumber = 0;
