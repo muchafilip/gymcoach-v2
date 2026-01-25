@@ -1018,24 +1018,35 @@ public class WorkoutsController : ControllerBase
     /// Get progression suggestions for multiple exercises in one call
     /// </summary>
     [HttpPost("progression/batch")]
-    public async Task<ActionResult<Dictionary<int, SetTarget>>> GetProgressionBatch([FromBody] List<int> exerciseIds)
+    public async Task<ActionResult<Dictionary<int, SetTarget>>> GetProgressionBatch([FromBody] List<int>? exerciseIds)
     {
-        var userId = this.GetUserId();
-        var results = new Dictionary<int, SetTarget>();
-
-        // Run all progression calculations in parallel
-        var tasks = exerciseIds.Select(async id =>
+        if (exerciseIds == null || exerciseIds.Count == 0)
         {
-            var target = await _progression.CalculateNextTarget(userId, id);
-            return (id, target);
-        });
-
-        var progressions = await Task.WhenAll(tasks);
-        foreach (var (id, target) in progressions)
-        {
-            results[id] = target;
+            Console.WriteLine("[ProgressionBatch] No exercise IDs provided");
+            return new Dictionary<int, SetTarget>();
         }
 
+        var userId = this.GetUserId();
+        Console.WriteLine($"[ProgressionBatch] User {userId}, exercises: {string.Join(",", exerciseIds)}");
+
+        var results = new Dictionary<int, SetTarget>();
+
+        // Sequential execution - DbContext is not thread-safe
+        foreach (var id in exerciseIds)
+        {
+            try
+            {
+                var target = await _progression.CalculateNextTarget(userId, id);
+                results[id] = target;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[ProgressionBatch] Error for exercise {id}: {ex.Message}");
+                // Continue with other exercises, don't fail entire batch
+            }
+        }
+
+        Console.WriteLine($"[ProgressionBatch] Returning {results.Count} results");
         return results;
     }
 
