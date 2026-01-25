@@ -14,7 +14,7 @@ import {
 import { useThemeStore } from '../store/themeStore';
 import { usePreferencesStore } from '../store/preferencesStore';
 import { Exercise } from '../types';
-import { getExerciseHistory, ExerciseHistory } from '../api/workouts';
+import { getLastPerformance, LastPerformance } from '../api/workouts';
 import { IfFeatureEnabled } from './PremiumGate';
 
 interface ExerciseInfoModalProps {
@@ -30,7 +30,7 @@ export default function ExerciseInfoModal({
 }: ExerciseInfoModalProps) {
   const { colors } = useThemeStore();
   const { displayWeight, weightUnit } = usePreferencesStore();
-  const [history, setHistory] = useState<ExerciseHistory[]>([]);
+  const [lastPerformance, setLastPerformance] = useState<LastPerformance | null>(null);
   const [loadingHistory, setLoadingHistory] = useState(false);
 
   useEffect(() => {
@@ -43,8 +43,8 @@ export default function ExerciseInfoModal({
     if (!exercise) return;
     try {
       setLoadingHistory(true);
-      const data = await getExerciseHistory(exercise.id);
-      setHistory(data.slice(0, 5)); // Last 5 performances
+      const data = await getLastPerformance(exercise.id);
+      setLastPerformance(data);
     } catch (err) {
       console.error('Error loading exercise history:', err);
     } finally {
@@ -174,38 +174,39 @@ export default function ExerciseInfoModal({
             <IfFeatureEnabled feature="exerciseHistory">
               <View style={styles.section}>
                 <Text style={[styles.sectionTitle, { color: colors.textMuted }]}>
-                  RECENT PERFORMANCE
+                  LAST PERFORMANCE
                 </Text>
                 {loadingHistory ? (
                   <ActivityIndicator size="small" color={colors.primary} style={styles.historyLoader} />
-                ) : history.length === 0 ? (
+                ) : !lastPerformance ? (
                   <Text style={[styles.noHistoryText, { color: colors.textSecondary }]}>
                     No history yet
                   </Text>
                 ) : (
-                  <View style={[styles.historyTable, { borderColor: colors.border }]}>
-                    <View style={[styles.historyHeader, { backgroundColor: colors.surfaceAlt, borderBottomColor: colors.border }]}>
-                      <Text style={[styles.historyHeaderCell, styles.dateCol, { color: colors.textMuted }]}>Date</Text>
-                      <Text style={[styles.historyHeaderCell, styles.statsCol, { color: colors.textMuted }]}>Sets</Text>
-                      <Text style={[styles.historyHeaderCell, styles.statsCol, { color: colors.textMuted }]}>Reps</Text>
-                      <Text style={[styles.historyHeaderCell, styles.weightHistoryCol, { color: colors.textMuted }]}>Max</Text>
-                    </View>
-                    {history.map((item) => (
-                      <View key={item.id} style={[styles.historyRow, { borderBottomColor: colors.border }]}>
-                        <Text style={[styles.historyCell, styles.dateCol, { color: colors.text }]}>
-                          {formatDate(item.performedAt)}
-                        </Text>
-                        <Text style={[styles.historyCell, styles.statsCol, { color: colors.text }]}>
-                          {item.totalSets}
-                        </Text>
-                        <Text style={[styles.historyCell, styles.statsCol, { color: colors.text }]}>
-                          {item.totalReps}
-                        </Text>
-                        <Text style={[styles.historyCell, styles.weightHistoryCol, { color: colors.primary, fontWeight: '600' }]}>
-                          {displayWeight(item.maxWeight)}{weightUnit}
-                        </Text>
+                  <View>
+                    <Text style={[styles.lastPerformanceDate, { color: colors.textSecondary }]}>
+                      {formatDate(lastPerformance.performedAt)} • {lastPerformance.dayName}
+                    </Text>
+                    <View style={[styles.historyTable, { borderColor: colors.border }]}>
+                      <View style={[styles.historyHeader, { backgroundColor: colors.surfaceAlt, borderBottomColor: colors.border }]}>
+                        <Text style={[styles.historyHeaderCell, styles.setCol, { color: colors.textMuted }]}>Set</Text>
+                        <Text style={[styles.historyHeaderCell, styles.repsCol, { color: colors.textMuted }]}>Reps</Text>
+                        <Text style={[styles.historyHeaderCell, styles.weightCol, { color: colors.textMuted }]}>Weight</Text>
                       </View>
-                    ))}
+                      {lastPerformance.sets.map((set) => (
+                        <View key={set.setNumber} style={[styles.historyRow, { borderBottomColor: colors.border }]}>
+                          <Text style={[styles.historyCell, styles.setCol, { color: colors.text }]}>
+                            {set.setNumber}
+                          </Text>
+                          <Text style={[styles.historyCell, styles.repsCol, { color: colors.text }]}>
+                            {set.reps}
+                          </Text>
+                          <Text style={[styles.historyCell, styles.weightCol, { color: colors.primary, fontWeight: '600' }]}>
+                            {displayWeight(set.weight)}{weightUnit}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
                   </View>
                 )}
               </View>
@@ -229,8 +230,8 @@ const styles = StyleSheet.create({
   container: {
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    minHeight: 300,
-    maxHeight: '80%',
+    minHeight: 400,
+    maxHeight: '90%',
   },
   header: {
     flexDirection: 'row',
@@ -337,16 +338,20 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
   },
   historyCell: {
-    fontSize: 14,
+    fontSize: 15,
   },
-  dateCol: {
-    flex: 1.5,
+  lastPerformanceDate: {
+    fontSize: 13,
+    marginBottom: 10,
   },
-  statsCol: {
+  setCol: {
+    width: 50,
+  },
+  repsCol: {
     flex: 1,
     textAlign: 'center',
   },
-  weightHistoryCol: {
+  weightCol: {
     flex: 1,
     textAlign: 'right',
   },

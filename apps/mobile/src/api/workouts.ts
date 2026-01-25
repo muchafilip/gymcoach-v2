@@ -326,6 +326,30 @@ export interface ExerciseHistory {
   performedAt: string;
 }
 
+export interface LastPerformanceSet {
+  setNumber: number;
+  reps: number;
+  weight: number;
+}
+
+export interface LastPerformance {
+  dayName: string;
+  performedAt: string;
+  sets: LastPerformanceSet[];
+}
+
+export const getLastPerformance = async (exerciseId: number): Promise<LastPerformance | null> => {
+  if (isOnline()) {
+    try {
+      const response = await apiClient.get(`/workouts/exercises/${exerciseId}/last-performance`);
+      return response.data;
+    } catch (error) {
+      console.warn('[Offline] Last performance API failed');
+    }
+  }
+  return null; // No offline support for now
+};
+
 export const getExerciseHistory = async (exerciseId: number): Promise<ExerciseHistory[]> => {
   // If online, try API first
   if (isOnline()) {

@@ -145,20 +145,20 @@ export default function SupersetModal({
 
     setCreating(-1);
     try {
-      // First, add any exercises that aren't in the workout yet
-      const exerciseLogIds: number[] = [];
-
-      for (const exercise of selectedExercises) {
-        console.log('[Superset] Processing exercise:', exercise.name, 'isInWorkout:', exercise.isInWorkout, 'exerciseLogId:', exercise.exerciseLogId);
-        if (exercise.isInWorkout && exercise.exerciseLogId) {
-          exerciseLogIds.push(exercise.exerciseLogId);
-        } else {
-          // Add exercise to workout first
-          console.log('[Superset] Adding exercise to day first:', exercise.exerciseId);
-          const newExercise = await addExerciseToDay(dayId, exercise.exerciseId);
-          exerciseLogIds.push(newExercise.id);
-        }
-      }
+      // First, add any exercises that aren't in the workout yet (in parallel)
+      const exerciseLogIds = await Promise.all(
+        selectedExercises.map(async (exercise) => {
+          console.log('[Superset] Processing exercise:', exercise.name, 'isInWorkout:', exercise.isInWorkout, 'exerciseLogId:', exercise.exerciseLogId);
+          if (exercise.isInWorkout && exercise.exerciseLogId) {
+            return exercise.exerciseLogId;
+          } else {
+            // Add exercise to workout first
+            console.log('[Superset] Adding exercise to day first:', exercise.exerciseId);
+            const newExercise = await addExerciseToDay(dayId, exercise.exerciseId);
+            return newExercise.id;
+          }
+        })
+      );
 
       console.log('[Superset] Creating superset with exerciseLogIds:', exerciseLogIds);
       // Now create the superset with all exercise log IDs

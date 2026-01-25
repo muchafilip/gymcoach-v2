@@ -664,6 +664,48 @@ public class WorkoutsController : ControllerBase
     }
 
     /// <summary>
+    /// Get last performance with individual sets for an exercise
+    /// </summary>
+    [HttpGet("exercises/{exerciseId}/last-performance")]
+    public async Task<ActionResult<LastPerformanceDto?>> GetLastPerformance(int exerciseId)
+    {
+        var userId = this.GetUserId();
+
+        // Find the most recent completed workout day where this exercise was performed
+        var lastLog = await _context.UserExerciseLogs
+            .Include(el => el.Sets)
+            .Include(el => el.UserWorkoutDay)
+                .ThenInclude(d => d.WorkoutDayTemplate)
+            .Where(el =>
+                el.ExerciseId == exerciseId &&
+                el.UserWorkoutDay.UserWorkoutPlan.UserId == userId &&
+                el.UserWorkoutDay.CompletedAt != null)
+            .OrderByDescending(el => el.UserWorkoutDay.CompletedAt)
+            .FirstOrDefaultAsync();
+
+        if (lastLog == null)
+            return Ok(null);
+
+        var completedSets = lastLog.Sets
+            .Where(s => s.Completed)
+            .OrderBy(s => s.SetNumber)
+            .Select(s => new LastPerformanceSetDto
+            {
+                SetNumber = s.SetNumber,
+                Reps = s.ActualReps ?? s.TargetReps,
+                Weight = s.Weight ?? 0
+            })
+            .ToList();
+
+        return new LastPerformanceDto
+        {
+            DayName = lastLog.UserWorkoutDay.WorkoutDayTemplate.Name,
+            PerformedAt = lastLog.UserWorkoutDay.CompletedAt!.Value,
+            Sets = completedSets
+        };
+    }
+
+    /// <summary>
     /// Get progress stats for charts
     /// </summary>
     [HttpGet("stats/progress")]
@@ -1469,4 +1511,18 @@ public class TopExerciseDto
     public string ExerciseName { get; set; } = "";
     public decimal TotalVolume { get; set; }
     public int SessionCount { get; set; }
+}
+
+public class LastPerformanceDto
+{
+    public string DayName { get; set; } = "";
+    public DateTime PerformedAt { get; set; }
+    public List<LastPerformanceSetDto> Sets { get; set; } = [];
+}
+
+public class LastPerformanceSetDto
+{
+    public int SetNumber { get; set; }
+    public int Reps { get; set; }
+    public decimal Weight { get; set; }
 }
