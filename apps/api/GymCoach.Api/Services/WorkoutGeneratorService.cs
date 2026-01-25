@@ -21,13 +21,15 @@ public class WorkoutGeneratorService
     /// <param name="priorityMuscleIds">Optional list of 1-2 muscle group IDs to prioritize (extra volume)</param>
     public async Task<UserWorkoutPlan> GenerateWorkoutPlan(int userId, int templateId, List<int>? priorityMuscleIds = null)
     {
-        Console.WriteLine($"[Generate] Creating new plan with priority muscles: {string.Join(",", priorityMuscleIds ?? [])}");
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        Console.WriteLine($"[Generate] START - userId={userId}, templateId={templateId}, priorityMuscles={string.Join(",", priorityMuscleIds ?? [])}");
 
         // Validate priority muscles (max 2)
         if (priorityMuscleIds?.Count > 2)
             throw new ArgumentException("Maximum 2 priority muscles allowed");
 
         // Deactivate any other active plans for this user
+        Console.WriteLine($"[Generate] {sw.ElapsedMilliseconds}ms - Deactivating old plans...");
         var activePlans = await _context.UserWorkoutPlans
             .Where(p => p.UserId == userId && p.IsActive)
             .ToListAsync();
@@ -37,12 +39,14 @@ public class WorkoutGeneratorService
             plan.IsActive = false;
         }
 
+        Console.WriteLine($"[Generate] {sw.ElapsedMilliseconds}ms - Loading template...");
         var template = await _context.WorkoutTemplates
             .Include(t => t.DayTemplates)
                 .ThenInclude(d => d.TargetMuscles)
             .FirstOrDefaultAsync(t => t.Id == templateId)
             ?? throw new ArgumentException("Template not found");
 
+        Console.WriteLine($"[Generate] {sw.ElapsedMilliseconds}ms - Loading user equipment...");
         // Get user's equipment
         var userEquipmentIds = await _context.Set<UserEquipment>()
             .Where(ue => ue.UserId == userId)
@@ -53,6 +57,7 @@ public class WorkoutGeneratorService
         if (!userEquipmentIds.Contains(1))
             userEquipmentIds.Add(1);
 
+        Console.WriteLine($"[Generate] {sw.ElapsedMilliseconds}ms - Creating plan entity...");
         // Create the user workout plan (plans are now indefinite - only generate week 1)
         var newPlan = new UserWorkoutPlan
         {
@@ -64,13 +69,16 @@ public class WorkoutGeneratorService
         };
 
         _context.UserWorkoutPlans.Add(newPlan);
+        Console.WriteLine($"[Generate] {sw.ElapsedMilliseconds}ms - Saving plan...");
         await _context.SaveChangesAsync();
+        Console.WriteLine($"[Generate] {sw.ElapsedMilliseconds}ms - Plan saved, ID={newPlan.Id}");
 
         // Store priority muscles (gracefully handle if table doesn't exist yet)
         if (priorityMuscleIds?.Any() == true)
         {
             try
             {
+                Console.WriteLine($"[Generate] {sw.ElapsedMilliseconds}ms - Saving priority muscles...");
                 foreach (var muscleId in priorityMuscleIds)
                 {
                     _context.UserWorkoutPlanPriorityMuscles.Add(new UserWorkoutPlanPriorityMuscle
@@ -80,10 +88,11 @@ public class WorkoutGeneratorService
                     });
                 }
                 await _context.SaveChangesAsync();
+                Console.WriteLine($"[Generate] {sw.ElapsedMilliseconds}ms - Priority muscles saved");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[Generate] Warning: Could not save priority muscles: {ex.Message}");
+                Console.WriteLine($"[Generate] {sw.ElapsedMilliseconds}ms - Warning: Could not save priority muscles: {ex.Message}");
                 // Continue without priority muscles - plan will still work
             }
         }
@@ -91,6 +100,7 @@ public class WorkoutGeneratorService
         var dayNumber = 0;
         var workoutDays = new List<(UserWorkoutDay day, WorkoutDayTemplate template)>();
 
+        Console.WriteLine($"[Generate] {sw.ElapsedMilliseconds}ms - Creating {template.DayTemplates.Count} workout days...");
         // Only generate Week 1 - more weeks generated on demand when week completes
         foreach (var dayTemplate in template.DayTemplates.OrderBy(d => d.DayNumber))
         {
@@ -109,14 +119,19 @@ public class WorkoutGeneratorService
         }
 
         // Single save for all days
+        Console.WriteLine($"[Generate] {sw.ElapsedMilliseconds}ms - Saving all days...");
         await _context.SaveChangesAsync();
+        Console.WriteLine($"[Generate] {sw.ElapsedMilliseconds}ms - Days saved");
 
         // Now generate exercises for each day (they need the day IDs)
         foreach (var (workoutDay, dayTemplate) in workoutDays)
         {
+            Console.WriteLine($"[Generate] {sw.ElapsedMilliseconds}ms - Generating exercises for day {workoutDay.DayNumber}...");
             await GenerateExercisesForDay(workoutDay.Id, dayTemplate, userId, userEquipmentIds, null, template.HasSupersets, priorityMuscleIds);
+            Console.WriteLine($"[Generate] {sw.ElapsedMilliseconds}ms - Day {workoutDay.DayNumber} complete");
         }
 
+        Console.WriteLine($"[Generate] {sw.ElapsedMilliseconds}ms - DONE");
         return newPlan;
     }
 
@@ -201,6 +216,9 @@ public class WorkoutGeneratorService
         bool createSupersets,
         List<int>? priorityMuscleIds = null)
     {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        Console.WriteLine($"[GenExercises] START day {workoutDayId}, {dayTemplate.TargetMuscles.Count} target muscles");
+
         int orderIndex = 0;
         // Track generated exercises by muscle group for superset pairing
         var exerciseLogs = new List<(int muscleGroupId, UserExerciseLog log)>();
@@ -209,6 +227,7 @@ public class WorkoutGeneratorService
 
         foreach (var targetMuscle in dayTemplate.TargetMuscles)
         {
+            Console.WriteLine($"[GenExercises] {sw.ElapsedMilliseconds}ms - Querying exercises for muscle {targetMuscle.MuscleGroupId}...");
             var availableExercises = await _context.Exercises
                 .Include(e => e.RequiredEquipment)
                 .Where(e =>
@@ -216,6 +235,7 @@ public class WorkoutGeneratorService
                      e.SecondaryMuscles.Any(sm => sm.MuscleGroupId == targetMuscle.MuscleGroupId)) &&
                     e.RequiredEquipment.All(re => userEquipmentIds.Contains(re.EquipmentId)))
                 .ToListAsync();
+            Console.WriteLine($"[GenExercises] {sw.ElapsedMilliseconds}ms - Found {availableExercises.Count} exercises");
 
             var primaryExercises = availableExercises
                 .Where(e => e.PrimaryMuscleGroupId == targetMuscle.MuscleGroupId)
@@ -236,23 +256,30 @@ public class WorkoutGeneratorService
                 selectedExercises.AddRange(secondaryExercises);
             }
 
+            // Skip progression for new plans (dayTypeIdForProgression is null for week 1)
+            var skipProgression = dayTypeIdForProgression == null;
+            Console.WriteLine($"[GenExercises] {sw.ElapsedMilliseconds}ms - Adding {selectedExercises.Count} exercises (skipProgression={skipProgression})...");
             foreach (var exercise in selectedExercises)
             {
                 selectedExerciseIds.Add(exercise.Id);
-                var (newOrderIndex, exerciseLog) = await AddExerciseToDay(workoutDayId, exercise, userId, dayTypeIdForProgression, orderIndex, targetMuscle.MuscleGroupId);
+                var (newOrderIndex, exerciseLog) = await AddExerciseToDay(workoutDayId, exercise, userId, dayTypeIdForProgression, orderIndex, targetMuscle.MuscleGroupId, skipProgression);
                 orderIndex = newOrderIndex;
                 exerciseLogs.Add((targetMuscle.MuscleGroupId, exerciseLog));
             }
+            Console.WriteLine($"[GenExercises] {sw.ElapsedMilliseconds}ms - Exercises added");
         }
 
         // Add +1 exercise for each priority muscle that's targeted on this day
         if (priorityMuscleIds != null)
         {
+            var skipProgression = dayTypeIdForProgression == null;
+            Console.WriteLine($"[GenExercises] {sw.ElapsedMilliseconds}ms - Processing priority muscles...");
             foreach (var priorityMuscleId in priorityMuscleIds)
             {
                 // Check if this muscle is already targeted on this day
                 if (dayTemplate.TargetMuscles.Any(tm => tm.MuscleGroupId == priorityMuscleId))
                 {
+                    Console.WriteLine($"[GenExercises] {sw.ElapsedMilliseconds}ms - Querying priority exercises for muscle {priorityMuscleId}...");
                     // Add 1 extra exercise for this priority muscle
                     var availableExercises = await _context.Exercises
                         .Include(e => e.RequiredEquipment)
@@ -268,9 +295,9 @@ public class WorkoutGeneratorService
 
                     if (priorityExercise != null)
                     {
-                        Console.WriteLine($"[Generate] Adding priority exercise for muscle {priorityMuscleId}: {priorityExercise.Name}");
+                        Console.WriteLine($"[GenExercises] {sw.ElapsedMilliseconds}ms - Adding priority exercise: {priorityExercise.Name}");
                         selectedExerciseIds.Add(priorityExercise.Id);
-                        var (newOrderIndex, exerciseLog) = await AddExerciseToDay(workoutDayId, priorityExercise, userId, dayTypeIdForProgression, orderIndex, priorityMuscleId);
+                        var (newOrderIndex, exerciseLog) = await AddExerciseToDay(workoutDayId, priorityExercise, userId, dayTypeIdForProgression, orderIndex, priorityMuscleId, skipProgression);
                         orderIndex = newOrderIndex;
                         exerciseLogs.Add((priorityMuscleId, exerciseLog));
                     }
@@ -300,7 +327,8 @@ public class WorkoutGeneratorService
         int userId,
         int? dayTypeIdForProgression,
         int orderIndex,
-        int muscleGroupId)
+        int muscleGroupId,
+        bool skipProgression = false)
     {
         var exerciseLog = new UserExerciseLog
         {
@@ -312,8 +340,15 @@ public class WorkoutGeneratorService
         _context.UserExerciseLogs.Add(exerciseLog);
         // Don't save here - let caller batch saves
 
-        // Get progression target
-        var target = await _progressionService.CalculateNextTarget(userId, exercise.Id, dayTypeIdForProgression);
+        // Get progression target (skip for new plans to avoid many DB calls)
+        int targetReps = 10;
+        decimal weight = 0;
+        if (!skipProgression)
+        {
+            var target = await _progressionService.CalculateNextTarget(userId, exercise.Id, dayTypeIdForProgression);
+            targetReps = target.TargetReps;
+            weight = target.Weight;
+        }
 
         for (int setNum = 1; setNum <= 3; setNum++)
         {
@@ -321,8 +356,8 @@ public class WorkoutGeneratorService
             {
                 UserExerciseLog = exerciseLog, // Use navigation property instead of ID
                 SetNumber = setNum,
-                TargetReps = target.TargetReps,
-                Weight = target.Weight,
+                TargetReps = targetReps,
+                Weight = weight,
                 Completed = false
             };
             _context.ExerciseSets.Add(set);
