@@ -195,18 +195,49 @@ export const syncUserData = async (): Promise<void> => {
 
     console.log(`Processing ${pendingItems.length} pending sync items`);
 
-    for (const item of pendingItems) {
+    // Batch ExerciseSet updates into a single API call
+    const setUpdates = pendingItems.filter(
+      (item) => item.table_name === 'ExerciseSet' && item.operation === 'UPDATE'
+    );
+    const otherItems = pendingItems.filter(
+      (item) => !(item.table_name === 'ExerciseSet' && item.operation === 'UPDATE')
+    );
+
+    if (setUpdates.length > 0) {
+      try {
+        const batchPayload = setUpdates.map((item) => {
+          const payload = JSON.parse(item.payload);
+          return { setId: item.record_id, ...payload };
+        });
+        await apiClient.put('/workouts/sets/batch', batchPayload);
+        // Remove all from queue on success
+        for (const item of setUpdates) {
+          await db.runAsync('DELETE FROM SyncQueue WHERE id = ?', [item.id]);
+          await db.runAsync(
+            `UPDATE ExerciseSet SET sync_status = 'synced' WHERE id = ?`,
+            [item.record_id]
+          );
+        }
+        console.log(`Batch synced ${setUpdates.length} set updates`);
+      } catch (error: unknown) {
+        const axiosError = error as { response?: { status: number } };
+        const status = axiosError.response?.status;
+        if (status === 404 || status === 400 || status === 403) {
+          for (const item of setUpdates) {
+            await db.runAsync('DELETE FROM SyncQueue WHERE id = ?', [item.id]);
+          }
+        } else {
+          console.error(`Failed to batch sync sets:`, error);
+        }
+      }
+    }
+
+    // Process remaining items individually
+    for (const item of otherItems) {
       try {
         const payload = JSON.parse(item.payload);
 
-        // Route to appropriate API endpoint based on table
         switch (item.table_name) {
-          case 'ExerciseSet':
-            if (item.operation === 'UPDATE') {
-              await apiClient.put(`/workouts/sets/${item.record_id}`, payload);
-            }
-            break;
-
           case 'UserWorkoutDay':
             if (item.operation === 'COMPLETE') {
               await apiClient.post(`/workouts/days/${item.record_id}/complete`, payload);
@@ -217,7 +248,6 @@ export const syncUserData = async (): Promise<void> => {
 
           case 'UserEquipment':
             if (item.operation === 'SYNC') {
-              // Sync user's equipment selection
               await apiClient.put('/equipment/me', payload);
             }
             break;
@@ -226,9 +256,7 @@ export const syncUserData = async (): Promise<void> => {
             console.warn(`Unknown table in sync queue: ${item.table_name}`);
         }
 
-        // Remove from sync queue after successful sync
         await db.runAsync('DELETE FROM SyncQueue WHERE id = ?', [item.id]);
-        // Mark record as synced
         await db.runAsync(
           `UPDATE ${item.table_name} SET sync_status = 'synced' WHERE id = ?`,
           [item.record_id]
@@ -238,13 +266,11 @@ export const syncUserData = async (): Promise<void> => {
         const axiosError = error as { response?: { status: number } };
         const status = axiosError.response?.status;
 
-        // Remove from queue for errors that won't succeed on retry
         if (status === 404 || status === 400 || status === 403) {
           console.log(`Removing from queue (status ${status}): ${item.table_name} ${item.record_id}`);
           await db.runAsync('DELETE FROM SyncQueue WHERE id = ?', [item.id]);
         } else {
           console.error(`Failed to sync ${item.table_name} ${item.record_id}:`, error);
-          // Keep in queue for retry (network errors, 500s, etc.)
         }
       }
     }

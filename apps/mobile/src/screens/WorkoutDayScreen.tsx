@@ -557,6 +557,24 @@ export default function WorkoutDayScreen() {
     }
   };
 
+  const handleFillAll = async () => {
+    if (!workoutDay) return;
+    const updated = {
+      ...workoutDay,
+      exercises: workoutDay.exercises.map((ex) => ({
+        ...ex,
+        sets: ex.sets.map((set) => ({ ...set, actualReps: 10, weight: 10, completed: true })),
+      })),
+    };
+    setWorkoutDay(updated);
+    // Only save to local DB - sync will happen on workout complete
+    for (const ex of updated.exercises) {
+      for (const set of ex.sets) {
+        updateSetLocally(set.id, { actualReps: 10, weight: 10, completed: true }).catch(() => {});
+      }
+    }
+  };
+
   const allSetsCompleted =
     workoutDay?.exercises.every((ex) => ex.sets.every((set) => set.completed)) ?? false;
 
@@ -608,6 +626,16 @@ export default function WorkoutDayScreen() {
           <WorkoutTimer dayId={dayId} onStart={handleTimerStart} inline />
         )}
       </View>
+
+      {/* TODO: Remove - temporary dev button */}
+      {!isCompleted && (
+        <TouchableOpacity
+          onPress={handleFillAll}
+          style={{ backgroundColor: '#FF5722', padding: 6, alignItems: 'center' }}
+        >
+          <Text style={{ color: '#FFF', fontWeight: '700', fontSize: 12 }}>DEV: Fill All (10/10)</Text>
+        </TouchableOpacity>
+      )}
 
       <KeyboardAvoidingView
         style={styles.content}

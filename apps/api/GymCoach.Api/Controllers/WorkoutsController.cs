@@ -486,6 +486,31 @@ public class WorkoutsController : ControllerBase
     }
 
     /// <summary>
+    /// Batch update multiple sets at once (used by mobile sync)
+    /// </summary>
+    [HttpPut("sets/batch")]
+    public async Task<IActionResult> UpdateSetsBatch([FromBody] List<BatchSetUpdate> updates)
+    {
+        if (updates == null || updates.Count == 0) return Ok();
+
+        var setIds = updates.Select(u => u.SetId).ToList();
+        var sets = await _context.ExerciseSets
+            .Where(s => setIds.Contains(s.Id))
+            .ToListAsync();
+
+        foreach (var set in sets)
+        {
+            var update = updates.First(u => u.SetId == set.Id);
+            if (update.ActualReps.HasValue) set.ActualReps = update.ActualReps;
+            if (update.Weight.HasValue) set.Weight = update.Weight;
+            if (update.Completed.HasValue) set.Completed = update.Completed.Value;
+        }
+
+        await _context.SaveChangesAsync();
+        return Ok();
+    }
+
+    /// <summary>
     /// Start a workout (record start time)
     /// </summary>
     [HttpPost("days/{dayId}/start")]
@@ -610,46 +635,18 @@ public class WorkoutsController : ControllerBase
 
         // Award XP for workout completion
         var completedSetsCount = day.ExerciseLogs.Sum(el => el.Sets.Count(s => s.Completed));
-        var newPRsCount = 0; // TODO: Count new PRs from PR service if available
+        var newPRsCount = 0;
 
         var xpResult = await _xpService.OnWorkoutCompleted(userId, dayId, completedSetsCount, newPRsCount);
 
-        // Update quest progress and collect auto-claimed quest results
-        var questClaimResults = new List<QuestClaimResult>();
-        questClaimResults.AddRange(await _questService.UpdateQuestProgress(userId, "workout_complete", 1));
-        questClaimResults.AddRange(await _questService.UpdateQuestProgress(userId, "sets_logged", completedSetsCount));
-        questClaimResults.AddRange(await _questService.UpdateQuestProgress(userId, "total_workouts", 1));
-        questClaimResults.AddRange(await _questService.UpdateQuestProgress(userId, "workouts_this_week", 1));
-        if (newPRsCount > 0)
-        {
-            questClaimResults.AddRange(await _questService.UpdateQuestProgress(userId, "pr_achieved", newPRsCount));
-        }
-        // Check if weekly goal just reached for onboarding quest
-        if (xpResult.WeeklyGoalJustReached)
-        {
-            questClaimResults.AddRange(await _questService.UpdateQuestProgress(userId, "weeks_completed", 1));
-        }
-
-        // Calculate total quest XP
-        var questXpAwarded = questClaimResults.Sum(r => r.XpAwarded);
-        var autoClaimedQuests = questClaimResults.Select(r => new AutoClaimedQuestDto
-        {
-            Title = r.QuestTitle,
-            XpAwarded = r.XpAwarded
-        }).ToList();
-
-        // Calculate milestone progress (every 4 weeks)
+        // Calculate milestone progress using the days we already loaded via the plan
         var allPlanDays = await _context.UserWorkoutDays
             .Where(d => d.UserWorkoutPlanId == day.UserWorkoutPlanId)
+            .Select(d => new { d.WeekNumber, d.CompletedAt })
             .ToListAsync();
 
         var daysByWeek = allPlanDays.GroupBy(d => d.WeekNumber);
-        var completedWeeks = daysByWeek
-            .Where(g => g.All(d => d.CompletedAt != null))
-            .Select(g => g.Key)
-            .ToList();
-
-        var weeksCompleted = completedWeeks.Count;
+        var weeksCompleted = daysByWeek.Count(g => g.All(d => d.CompletedAt != null));
         var thisWeekDays = allPlanDays.Where(d => d.WeekNumber == day.WeekNumber).ToList();
         var weekJustCompleted = thisWeekDays.All(d => d.CompletedAt != null);
         var isMilestone = weekJustCompleted && weeksCompleted > 0 && weeksCompleted % 4 == 0;
@@ -657,16 +654,16 @@ public class WorkoutsController : ControllerBase
         return Ok(new WorkoutCompleteResponse
         {
             XpAwarded = xpResult.TotalXpAwarded,
-            TotalXp = xpResult.TotalXp + questXpAwarded, // Include quest XP in total
+            TotalXp = xpResult.TotalXp,
             Level = xpResult.Level,
-            LeveledUp = xpResult.LeveledUp || questClaimResults.Any(r => r.LeveledUp),
+            LeveledUp = xpResult.LeveledUp,
             CurrentStreak = xpResult.CurrentStreak,
             WorkoutsThisWeek = xpResult.WorkoutsThisWeek,
             WeeklyGoalReached = xpResult.WeeklyGoalReached,
             XpToNextLevel = xpResult.XpToNextLevel,
             NextUnlockLevel = xpResult.NextUnlockLevel,
-            QuestXpAwarded = questXpAwarded,
-            AutoClaimedQuests = autoClaimedQuests,
+            QuestXpAwarded = 0,
+            AutoClaimedQuests = new List<AutoClaimedQuestDto>(),
             UnlockedPlan = xpResult.UnlockedPlan != null
                 ? new UnlockedPlanDto
                 {
@@ -1610,4 +1607,12 @@ public class LastPerformanceSetDto
     public int SetNumber { get; set; }
     public int Reps { get; set; }
     public decimal Weight { get; set; }
+}
+
+public class BatchSetUpdate
+{
+    public int SetId { get; set; }
+    public int? ActualReps { get; set; }
+    public decimal? Weight { get; set; }
+    public bool? Completed { get; set; }
 }
