@@ -38,6 +38,11 @@ public class GymCoachDbContext : DbContext
     public DbSet<Quest> Quests => Set<Quest>();
     public DbSet<UserQuest> UserQuests => Set<UserQuest>();
 
+    // Notifications
+    public DbSet<DevicePushToken> DevicePushTokens => Set<DevicePushToken>();
+    public DbSet<NotificationPreferences> NotificationPreferences => Set<NotificationPreferences>();
+    public DbSet<NotificationLog> NotificationLogs => Set<NotificationLog>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -277,6 +282,38 @@ public class GymCoachDbContext : DbContext
 
         modelBuilder.Entity<UserQuest>()
             .HasIndex(uq => new { uq.UserId, uq.QuestId, uq.AssignedAt });
+
+        // DevicePushToken configuration
+        modelBuilder.Entity<DevicePushToken>()
+            .HasIndex(t => new { t.UserId, t.Token })
+            .IsUnique();
+
+        modelBuilder.Entity<DevicePushToken>()
+            .HasOne(t => t.User)
+            .WithMany()
+            .HasForeignKey(t => t.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // NotificationPreferences configuration (one per user)
+        modelBuilder.Entity<NotificationPreferences>()
+            .HasIndex(p => p.UserId)
+            .IsUnique();
+
+        modelBuilder.Entity<NotificationPreferences>()
+            .HasOne(p => p.User)
+            .WithMany()
+            .HasForeignKey(p => p.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // NotificationLog configuration
+        modelBuilder.Entity<NotificationLog>()
+            .HasIndex(l => new { l.UserId, l.CreatedAt });
+
+        modelBuilder.Entity<NotificationLog>()
+            .HasOne(l => l.User)
+            .WithMany()
+            .HasForeignKey(l => l.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
 
         // Seed data
         SeedData.Seed(modelBuilder);

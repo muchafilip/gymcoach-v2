@@ -178,6 +178,8 @@ export async function getLocalHomeData(): Promise<HomeData> {
     nextWorkout,
     recentWorkouts,
     personalRecords,
+    workoutsCompletedToday: 0,
+    dailyLimitReached: false,
   };
 }
 

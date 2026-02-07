@@ -8,6 +8,7 @@ public class XpService
 {
     private readonly GymCoachDbContext _context;
     private readonly PlanUnlockService _planUnlockService;
+    private readonly INotificationService _notifications;
 
     // XP Constants
     private const int XP_WORKOUT_COMPLETE = 100;
@@ -17,10 +18,11 @@ public class XpService
     private const int XP_WEEKLY_GOAL = 200;
     private const int XP_FIRST_WORKOUT_OF_WEEK = 25;
 
-    public XpService(GymCoachDbContext context, PlanUnlockService planUnlockService)
+    public XpService(GymCoachDbContext context, PlanUnlockService planUnlockService, INotificationService notifications)
     {
         _context = context;
         _planUnlockService = planUnlockService;
+        _notifications = notifications;
     }
 
     /// <summary>
@@ -167,6 +169,8 @@ public class XpService
         if (leveledUp)
         {
             unlockedPlan = await _planUnlockService.CheckAndProcessUnlock(userId, progress.Level);
+            // Send level up notification (fire and forget)
+            _ = _notifications.SendLevelUp(userId, progress.Level);
         }
 
         return new WorkoutCompleteXpResult

@@ -7,6 +7,9 @@ import Animated, {
   withSpring,
   withSequence,
   withTiming,
+  withRepeat,
+  withDelay,
+  Easing,
   runOnJS,
 } from 'react-native-reanimated';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -42,6 +45,10 @@ export default function FloatingActionButton() {
   const scale = useSharedValue(1);
   const rotate = useSharedValue(0);
 
+  // Pulse glow animation
+  const glowScale = useSharedValue(1);
+  const glowOpacity = useSharedValue(0.4);
+
   // Track current route to hide FAB on WorkoutDay screen
   const currentRoute = useNavigationState(state => {
     if (!state) return null;
@@ -56,6 +63,26 @@ export default function FloatingActionButton() {
   // Load saved position
   useEffect(() => {
     loadPosition();
+  }, []);
+
+  // Continuous pulse glow
+  useEffect(() => {
+    glowScale.value = withRepeat(
+      withSequence(
+        withTiming(1.45, { duration: 1200, easing: Easing.inOut(Easing.ease) }),
+        withTiming(1, { duration: 1200, easing: Easing.inOut(Easing.ease) })
+      ),
+      -1, // infinite
+      false
+    );
+    glowOpacity.value = withRepeat(
+      withSequence(
+        withTiming(0, { duration: 1200, easing: Easing.inOut(Easing.ease) }),
+        withTiming(0.4, { duration: 1200, easing: Easing.inOut(Easing.ease) })
+      ),
+      -1,
+      false
+    );
   }, []);
 
   // Measure and report FAB position for tour
@@ -186,6 +213,11 @@ export default function FloatingActionButton() {
     ],
   }));
 
+  const glowStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: glowScale.value }],
+    opacity: glowOpacity.value,
+  }));
+
   // Don't render if on WorkoutDay screen (after all hooks are called)
   if (currentRoute === 'WorkoutDay') {
     return null;
@@ -194,6 +226,7 @@ export default function FloatingActionButton() {
   return (
     <GestureDetector gesture={composed}>
       <Animated.View style={[styles.container, animatedStyle]}>
+        <Animated.View style={[styles.glowRing, { backgroundColor: colors.primary }, glowStyle]} />
         <View
           ref={fabRef}
           collapsable={false}
@@ -213,6 +246,12 @@ const styles = StyleSheet.create({
   container: {
     position: 'absolute',
     zIndex: 999,
+  },
+  glowRing: {
+    position: 'absolute',
+    width: FAB_SIZE,
+    height: FAB_SIZE,
+    borderRadius: FAB_SIZE / 2,
   },
   fab: {
     width: FAB_SIZE,

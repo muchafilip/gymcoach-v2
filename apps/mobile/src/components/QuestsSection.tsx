@@ -117,8 +117,26 @@ function QuestsSectionContent() {
     return null;
   }
 
+  // Calculate time until next quest refresh (midnight local time)
+  const getNextRefreshTime = () => {
+    const now = new Date();
+    const tomorrow = new Date(now);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    tomorrow.setHours(0, 0, 0, 0);
+    const hoursUntil = Math.ceil((tomorrow.getTime() - now.getTime()) / (1000 * 60 * 60));
+    return hoursUntil <= 1 ? 'in about an hour' : `in ${hoursUntil} hours`;
+  };
+
   if (quests.length === 0) {
-    return null;
+    return (
+      <View style={[styles.emptyContainer, { backgroundColor: colors.surface }]}>
+        <Text style={styles.emptyStateIcon}>🎯</Text>
+        <Text style={[styles.emptyTitle, { color: colors.text }]}>All caught up!</Text>
+        <Text style={[styles.emptySubtitle, { color: colors.textMuted }]}>
+          New daily quests {getNextRefreshTime()}
+        </Text>
+      </View>
+    );
   }
 
   // Group all quests by type for modal
@@ -437,5 +455,25 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
+  },
+  emptyContainer: {
+    borderRadius: 14,
+    marginHorizontal: 16,
+    marginBottom: 12,
+    padding: 20,
+    alignItems: 'center',
+  },
+  emptyStateIcon: {
+    fontSize: 32,
+    marginBottom: 8,
+  },
+  emptyTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  emptySubtitle: {
+    fontSize: 13,
+    textAlign: 'center',
   },
 });

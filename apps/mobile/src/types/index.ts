@@ -139,6 +139,8 @@ export interface HomeData {
   nextWorkout: NextWorkout | null;
   recentWorkouts: RecentWorkout[];
   personalRecords: PersonalRecord[];
+  workoutsCompletedToday: number;
+  dailyLimitReached: boolean;
 }
 
 export interface PersonalRecord {

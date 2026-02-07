@@ -27,7 +27,7 @@ import { isOnline } from '../utils/network';
 import { getInsights, Insight } from '../api/insights';
 import { useThemeStore } from '../store/themeStore';
 import { useProgressStore } from '../store/progressStore';
-import { useFeature } from '../store/featureStore';
+import { useFeature, useFeatureStore } from '../store/featureStore';
 import XPBar from '../components/XPBar';
 import LevelUpModal from '../components/LevelUpModal';
 import InsightCard from '../components/InsightCard';
@@ -41,11 +41,14 @@ export default function HomeScreen() {
   const { colors, isDarkMode } = useThemeStore();
   const xpFeature = useFeature('xpSystem');
   const insightsFeature = useFeature('insights');
+  const { isPremium, devModeEnabled } = useFeatureStore();
+  const isUnlimited = isPremium || devModeEnabled;
   const { loadProgress } = useProgressStore();
   const { hasSeenTour, startTour, setTargetMeasurement } = useOnboardingStore();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadingNextWorkout, setLoadingNextWorkout] = useState(true);
+  const [loadingStats, setLoadingStats] = useState(true);
   const [data, setData] = useState<HomeData | null>(null);
   const [insights, setInsights] = useState<Insight[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -99,27 +102,27 @@ export default function HomeScreen() {
     try {
       setError(null);
 
-      // 1. Try cached nextWorkout from AsyncStorage first (most recent API data)
+      // 1. Try cached data from AsyncStorage first (most recent API data)
       let cachedNextWorkout = null;
+      let cachedStats = null;
       try {
-        const cached = await AsyncStorage.getItem('cachedNextWorkout');
-        if (cached) {
-          cachedNextWorkout = JSON.parse(cached);
-        }
+        const [nextWorkoutCache, statsCache] = await Promise.all([
+          AsyncStorage.getItem('cachedNextWorkout'),
+          AsyncStorage.getItem('cachedHomeStats'),
+        ]);
+        if (nextWorkoutCache) cachedNextWorkout = JSON.parse(nextWorkoutCache);
+        if (statsCache) cachedStats = JSON.parse(statsCache);
       } catch {}
 
-      // 2. Try local DB for stats (instant)
-      try {
-        const localData = await getLocalHomeData();
-        if (localData) {
-          // Use cached nextWorkout if available, otherwise show loading
-          setData({ ...localData, nextWorkout: cachedNextWorkout });
-          setLoading(false);
-          // Only show loading skeleton if we don't have cached nextWorkout
-          setLoadingNextWorkout(!cachedNextWorkout);
-        }
-      } catch (localErr) {
-        console.log('No local home data');
+      // 2. Use cached stats if available (prevents data flash)
+      if (cachedStats) {
+        setData({ ...cachedStats, nextWorkout: cachedNextWorkout });
+        setLoading(false);
+        setLoadingStats(false);
+        setLoadingNextWorkout(!cachedNextWorkout);
+      } else {
+        // No cached stats - show loading skeleton
+        setLoadingStats(true);
         setLoadingNextWorkout(true);
       }
 
@@ -129,13 +132,21 @@ export default function HomeScreen() {
           const homeData = await getHomeData();
           setData(homeData);
           setLoadingNextWorkout(false);
+          setLoadingStats(false);
 
-          // Cache nextWorkout for next time
-          if (homeData.nextWorkout) {
-            await AsyncStorage.setItem('cachedNextWorkout', JSON.stringify(homeData.nextWorkout));
-          } else {
-            await AsyncStorage.removeItem('cachedNextWorkout');
-          }
+          // Cache for next time (prevents data flash)
+          const statsToCache = {
+            totalWeightLifted: homeData.totalWeightLifted,
+            workoutsCompleted: homeData.workoutsCompleted,
+            personalRecords: homeData.personalRecords,
+            recentWorkouts: homeData.recentWorkouts,
+          };
+          await Promise.all([
+            homeData.nextWorkout
+              ? AsyncStorage.setItem('cachedNextWorkout', JSON.stringify(homeData.nextWorkout))
+              : AsyncStorage.removeItem('cachedNextWorkout'),
+            AsyncStorage.setItem('cachedHomeStats', JSON.stringify(statsToCache)),
+          ]);
 
           // Load XP progress if feature is available
           if (xpFeature.isAvailable) {
@@ -148,28 +159,23 @@ export default function HomeScreen() {
             setInsights(insightsData.slice(0, 5)); // Show top 5 insights
           }
         } catch (apiErr) {
-          console.log('API fetch failed, using local data');
+          console.log('API fetch failed, using cached data');
           setLoadingNextWorkout(false);
-          if (!data) {
+          setLoadingStats(false);
+          if (!data && !cachedStats) {
             setError('Failed to load data');
           }
         }
       } else {
-        // Offline - use cached or local nextWorkout
-        if (!cachedNextWorkout) {
-          try {
-            const localData = await getLocalHomeData();
-            if (localData?.nextWorkout) {
-              setData(prev => prev ? { ...prev, nextWorkout: localData.nextWorkout } : localData);
-            }
-          } catch {}
-        }
+        // Offline - already have cached data from step 2
         setLoadingNextWorkout(false);
+        setLoadingStats(false);
       }
     } catch (err) {
       console.error('Error loading home data:', err);
       setError('Failed to load data');
       setLoadingNextWorkout(false);
+      setLoadingStats(false);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -181,7 +187,13 @@ export default function HomeScreen() {
     loadData();
   };
 
+  const dailyLimitReached = !isUnlimited && data?.dailyLimitReached;
+
   const handleStartWorkout = () => {
+    if (dailyLimitReached) {
+      navigation.navigate('Paywall');
+      return;
+    }
     if (data?.nextWorkout) {
       navigation.navigate('Templates', {
         screen: 'WorkoutDay',
@@ -274,16 +286,25 @@ export default function HomeScreen() {
         <View style={styles.headerCompact}>
           <Text style={[styles.greetingCompact, { color: colors.text }]}>Welcome back!</Text>
           <View style={styles.statsRow}>
-            <View style={[styles.statPill, { backgroundColor: colors.primaryLight }]}>
-              <Text style={[styles.statPillText, { color: colors.primary }]}>
-                {formatWeight(data?.totalWeightLifted || 0)} lifted
-              </Text>
-            </View>
-            <View style={[styles.statPill, { backgroundColor: colors.successLight }]}>
-              <Text style={[styles.statPillText, { color: colors.success }]}>
-                {data?.workoutsCompleted || 0} workouts
-              </Text>
-            </View>
+            {loadingStats ? (
+              <>
+                <View style={[styles.statPill, styles.statPillSkeleton, { backgroundColor: colors.surfaceAlt }]} />
+                <View style={[styles.statPill, styles.statPillSkeleton, { backgroundColor: colors.surfaceAlt }]} />
+              </>
+            ) : (
+              <>
+                <View style={[styles.statPill, { backgroundColor: colors.primaryLight }]}>
+                  <Text style={[styles.statPillText, { color: colors.primary }]}>
+                    {formatWeight(data?.totalWeightLifted || 0)} lifted
+                  </Text>
+                </View>
+                <View style={[styles.statPill, { backgroundColor: colors.successLight }]}>
+                  <Text style={[styles.statPillText, { color: colors.success }]}>
+                    {data?.workoutsCompleted || 0} workouts
+                  </Text>
+                </View>
+              </>
+            )}
           </View>
         </View>
 
@@ -314,20 +335,22 @@ export default function HomeScreen() {
             onPress={handleStartWorkout}
             activeOpacity={0.85}
           >
-            <View style={[styles.nextWorkoutGradient, { backgroundColor: colors.primary }]}>
+            <View style={[styles.nextWorkoutGradient, { backgroundColor: dailyLimitReached ? colors.textMuted : colors.primary }]}>
               <View style={styles.nextWorkoutHeader}>
                 <View style={styles.nextUpBadge}>
-                  <Text style={styles.nextUpText}>NEXT UP</Text>
+                  <Text style={styles.nextUpText}>{dailyLimitReached ? 'DAILY LIMIT' : 'NEXT UP'}</Text>
                 </View>
               </View>
               <Text style={styles.nextWorkoutName}>{data.nextWorkout.dayName}</Text>
               <Text style={styles.nextWorkoutMeta}>
-                {data.nextWorkout.planName} • Week {data.nextWorkout.weekNumber}
+                {dailyLimitReached
+                  ? 'Come back tomorrow or upgrade to Premium'
+                  : `${data.nextWorkout.planName} • Week ${data.nextWorkout.weekNumber}`}
               </Text>
               <View style={styles.startButtonContainer}>
-                <View style={styles.startButton}>
-                  <Text style={styles.startButtonText}>START WORKOUT</Text>
-                  <Text style={styles.startButtonArrow}>→</Text>
+                <View style={[styles.startButton, dailyLimitReached && { backgroundColor: 'rgba(255,255,255,0.15)' }]}>
+                  <Text style={styles.startButtonText}>{dailyLimitReached ? 'GO PREMIUM' : 'START WORKOUT'}</Text>
+                  <Text style={styles.startButtonArrow}>{dailyLimitReached ? '⭐' : '→'}</Text>
                 </View>
               </View>
             </View>
@@ -348,7 +371,7 @@ export default function HomeScreen() {
           </TouchableOpacity>
         )}
 
-        {/* XP Progress Bar + Quests */}
+        {/* XP Progress Bar */}
         <View ref={xpBarRef} collapsable={false}>
           <XPBar />
         </View>
@@ -532,6 +555,11 @@ const styles = StyleSheet.create({
   statPillText: {
     fontSize: 13,
     fontWeight: '600',
+  },
+  statPillSkeleton: {
+    width: 100,
+    height: 28,
+    opacity: 0.5,
   },
   // Next Workout Card
   nextWorkoutCard: {

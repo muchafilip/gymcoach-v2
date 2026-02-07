@@ -124,10 +124,12 @@ function MainTabs() {
           component={TemplatesNavigator}
           listeners={({ navigation }) => ({
             tabPress: (e) => {
+              // Prevent default so we can reset the inner stack to TemplatesList
+              e.preventDefault();
               navigation.dispatch(
-                CommonActions.reset({
-                  index: 0,
-                  routes: [{ name: 'Templates' }],
+                CommonActions.navigate({
+                  name: 'Templates',
+                  params: { screen: 'TemplatesList' },
                 })
               );
             },

@@ -8,12 +8,14 @@ public class QuestService
 {
     private readonly GymCoachDbContext _context;
     private readonly XpService _xpService;
+    private readonly INotificationService _notifications;
     private readonly Random _random = new();
 
-    public QuestService(GymCoachDbContext context, XpService xpService)
+    public QuestService(GymCoachDbContext context, XpService xpService, INotificationService notifications)
     {
         _context = context;
         _xpService = xpService;
+        _notifications = notifications;
     }
 
     /// <summary>
@@ -115,6 +117,9 @@ public class QuestService
                     LeveledUp = leveledUp,
                     XpToNextLevel = GetXpForLevel(progress.Level + 1) - progress.TotalXp
                 });
+
+                // Send quest completed notification (fire and forget)
+                _ = _notifications.SendQuestCompleted(userId, userQuest.Quest.Title, userQuest.Quest.XpReward);
             }
         }
 

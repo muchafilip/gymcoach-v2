@@ -5,6 +5,8 @@ import * as AppleAuthentication from 'expo-apple-authentication';
 import { apiClient } from '../api/client';
 import { AuthUser, AuthResponse } from '../types';
 import { TOKEN_KEY, USER_KEY } from '../utils/auth';
+// TODO: Re-enable push notifications after App Store Connect setup
+// import { registerForPushNotifications } from '../services/notifications';
 
 interface AuthState {
   user: AuthUser | null;
@@ -44,6 +46,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           await apiClient.get('/auth/verify');
 
           set({ user, token, isAuthenticated: true, isLoading: false });
+
+          // TODO: Re-enable after App Store Connect setup
+          // registerForPushNotifications().catch(e => console.warn('Push notification registration failed:', e));
         } catch {
           // Token expired or invalid, clear stored data
           await SecureStore.deleteItemAsync(TOKEN_KEY);
@@ -86,6 +91,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       apiClient.defaults.headers.common['Authorization'] = `Bearer ${token}`;
 
       set({ user, token, isAuthenticated: true, isLoading: false });
+
+      // TODO: Re-enable after App Store Connect setup
+      // registerForPushNotifications().catch(e => console.warn('Push notification registration failed:', e));
     } catch (error: unknown) {
       console.error('Google sign-in error:', error);
       set({ isLoading: false });
@@ -132,6 +140,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       apiClient.defaults.headers.common['Authorization'] = `Bearer ${token}`;
 
       set({ user, token, isAuthenticated: true, isLoading: false });
+
+      // TODO: Re-enable after App Store Connect setup
+      // registerForPushNotifications().catch(e => console.warn('Push notification registration failed:', e));
     } catch (error: unknown) {
       console.error('Apple sign-in error:', error);
       set({ isLoading: false });

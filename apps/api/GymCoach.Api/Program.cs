@@ -80,6 +80,7 @@ builder.Services.AddScoped<QuestService>();
 builder.Services.AddScoped<InsightsService>();
 builder.Services.AddScoped<PlanUnlockService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddHttpClient();
 
 // Add CORS for mobile app and admin panel

@@ -4,6 +4,16 @@ using Microsoft.EntityFrameworkCore;
 
 namespace GymCoach.Api.Services;
 
+public class PRCheckResult
+{
+    public PersonalRecord? Record { get; set; }
+    public bool IsNewMaxWeight { get; set; }
+    public bool IsNewBestSet { get; set; }
+    public bool IsFirstRecord { get; set; }
+
+    public bool IsNewPR => IsNewMaxWeight || IsNewBestSet || IsFirstRecord;
+}
+
 public class PersonalRecordService
 {
     private readonly GymCoachDbContext _context;
@@ -16,9 +26,11 @@ public class PersonalRecordService
     /// <summary>
     /// Check and update PR after a set is completed
     /// </summary>
-    public async Task<PersonalRecord?> CheckAndUpdatePR(int userId, int exerciseId, int reps, decimal weight)
+    public async Task<PRCheckResult> CheckAndUpdatePR(int userId, int exerciseId, int reps, decimal weight)
     {
-        if (weight <= 0 || reps <= 0) return null;
+        var result = new PRCheckResult();
+
+        if (weight <= 0 || reps <= 0) return result;
 
         var pr = await _context.PersonalRecords
             .FirstOrDefaultAsync(p => p.UserId == userId && p.ExerciseId == exerciseId);
@@ -41,6 +53,7 @@ public class PersonalRecordService
             };
             _context.PersonalRecords.Add(pr);
             updated = true;
+            result.IsFirstRecord = true;
         }
         else
         {
@@ -50,6 +63,7 @@ public class PersonalRecordService
                 pr.MaxWeight = weight;
                 pr.MaxWeightDate = now;
                 updated = true;
+                result.IsNewMaxWeight = true;
             }
 
             // Check if new best set (by volume = reps * weight)
@@ -60,6 +74,7 @@ public class PersonalRecordService
                 pr.BestSetWeight = weight;
                 pr.BestSetDate = now;
                 updated = true;
+                result.IsNewBestSet = true;
             }
         }
 
@@ -68,7 +83,8 @@ public class PersonalRecordService
             await _context.SaveChangesAsync();
         }
 
-        return pr;
+        result.Record = pr;
+        return result;
     }
 
     /// <summary>

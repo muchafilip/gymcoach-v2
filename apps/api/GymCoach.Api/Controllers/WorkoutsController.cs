@@ -19,6 +19,7 @@ public class WorkoutsController : ControllerBase
     private readonly PersonalRecordService _prService;
     private readonly XpService _xpService;
     private readonly QuestService _questService;
+    private readonly INotificationService _notifications;
 
     public WorkoutsController(
         GymCoachDbContext context,
@@ -26,7 +27,8 @@ public class WorkoutsController : ControllerBase
         ProgressionService progression,
         PersonalRecordService prService,
         XpService xpService,
-        QuestService questService)
+        QuestService questService,
+        INotificationService notifications)
     {
         _context = context;
         _generator = generator;
@@ -34,6 +36,7 @@ public class WorkoutsController : ControllerBase
         _prService = prService;
         _xpService = xpService;
         _questService = questService;
+        _notifications = notifications;
     }
 
     /// <summary>
@@ -162,13 +165,26 @@ public class WorkoutsController : ControllerBase
             })
             .ToListAsync();
 
+        // Check daily limit for free users
+        var user = await _context.Users.FindAsync(userId);
+        var isFreeUser = user?.SubscriptionStatus == SubscriptionStatus.Free;
+        var today = DateTime.UtcNow.Date;
+        var completedToday = await _context.UserWorkoutDays
+            .Where(d => d.UserWorkoutPlan.UserId == userId
+                && d.CompletedAt.HasValue
+                && d.CompletedAt.Value.Date == today)
+            .CountAsync();
+        var dailyLimitReached = isFreeUser && completedToday >= 2;
+
         return new HomeDataDto
         {
             TotalWeightLifted = totalWeight,
             WorkoutsCompleted = completedDays,
             NextWorkout = nextWorkout,
             RecentWorkouts = recentWorkouts,
-            PersonalRecords = topPRs
+            PersonalRecords = topPRs,
+            WorkoutsCompletedToday = completedToday,
+            DailyLimitReached = dailyLimitReached
         };
     }
 
@@ -437,22 +453,32 @@ public class WorkoutsController : ControllerBase
         PersonalRecordDto? newPR = null;
         if (set.Completed && set.ActualReps.HasValue && set.Weight.HasValue && set.Weight > 0)
         {
-            var pr = await _prService.CheckAndUpdatePR(
+            var prResult = await _prService.CheckAndUpdatePR(
                 userId,
                 set.UserExerciseLog.ExerciseId,
                 set.ActualReps.Value,
                 set.Weight.Value
             );
 
-            if (pr != null)
+            if (prResult.Record != null)
             {
                 newPR = new PersonalRecordDto
                 {
-                    ExerciseId = pr.ExerciseId,
-                    MaxWeight = pr.MaxWeight,
-                    BestSetReps = pr.BestSetReps,
-                    BestSetWeight = pr.BestSetWeight
+                    ExerciseId = prResult.Record.ExerciseId,
+                    MaxWeight = prResult.Record.MaxWeight,
+                    BestSetReps = prResult.Record.BestSetReps,
+                    BestSetWeight = prResult.Record.BestSetWeight
                 };
+
+                // Send notification for new max weight PR (not first record - too spammy)
+                if (prResult.IsNewMaxWeight && !prResult.IsFirstRecord)
+                {
+                    var exercise = await _context.Exercises.FindAsync(set.UserExerciseLog.ExerciseId);
+                    if (exercise != null)
+                    {
+                        _ = _notifications.SendPRNotification(userId, exercise.Name, set.Weight.Value);
+                    }
+                }
             }
         }
 
@@ -535,7 +561,7 @@ public class WorkoutsController : ControllerBase
                 .CountAsync();
 
             Console.WriteLine($"[CompleteDay] Free user completed {completedToday} workouts today");
-            if (completedToday >= 100) // Increased for testing
+            if (completedToday >= 2)
             {
                 return BadRequest(new
                 {
@@ -1410,6 +1436,8 @@ public class HomeDataDto
     public NextWorkoutDto? NextWorkout { get; set; }
     public List<RecentWorkoutDto> RecentWorkouts { get; set; } = [];
     public List<PersonalRecordDto> PersonalRecords { get; set; } = [];
+    public int WorkoutsCompletedToday { get; set; }
+    public bool DailyLimitReached { get; set; }
 }
 
 public class NextWorkoutDto

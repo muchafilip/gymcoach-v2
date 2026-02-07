@@ -22,6 +22,13 @@ import { useOnboardingStore } from '../store/onboardingStore';
 import { performFullSync } from '../db/sync';
 import { getUserEquipment, fetchEquipment } from '../api/equipment';
 import { Equipment } from '../types';
+// TODO: Re-enable push notifications after App Store Connect setup
+// import {
+//   registerForPushNotifications,
+//   getNotificationPreferences,
+//   saveNotificationPreferences,
+//   NotificationPreferences,
+// } from '../services/notifications';
 
 export default function SettingsScreen() {
   const navigation = useNavigation<any>();
@@ -48,9 +55,50 @@ export default function SettingsScreen() {
   const [equipmentNames, setEquipmentNames] = useState<string[]>([]);
   const [loadingEquipment, setLoadingEquipment] = useState(true);
 
+  // TODO: Re-enable push notifications after App Store Connect setup
+  // const [notifPrefs, setNotifPrefs] = useState<NotificationPreferences | null>(null);
+  // const [loadingNotifs, setLoadingNotifs] = useState(true);
+  // const [savingNotifs, setSavingNotifs] = useState(false);
+
   useEffect(() => {
     loadUserEquipment();
+    // loadNotificationPreferences();
   }, []);
+
+  // const loadNotificationPreferences = async () => {
+  //   try {
+  //     const prefs = await getNotificationPreferences();
+  //     setNotifPrefs(prefs);
+  //   } catch (error) {
+  //     console.error('Failed to load notification preferences:', error);
+  //   } finally {
+  //     setLoadingNotifs(false);
+  //   }
+  // };
+
+  // const handleNotifPrefChange = async (key: keyof NotificationPreferences, value: boolean) => {
+  //   if (!notifPrefs) return;
+  //   const newPrefs = { ...notifPrefs, [key]: value };
+  //   setNotifPrefs(newPrefs);
+  //   if (key === 'enabled' && value) {
+  //     const token = await registerForPushNotifications();
+  //     if (!token) {
+  //       Alert.alert('Permission Required', 'Please enable notifications in your device settings.', [{ text: 'OK' }]);
+  //       setNotifPrefs(notifPrefs);
+  //       return;
+  //     }
+  //   }
+  //   setSavingNotifs(true);
+  //   try {
+  //     await saveNotificationPreferences(newPrefs);
+  //   } catch (error) {
+  //     console.error('Failed to save notification preferences:', error);
+  //     setNotifPrefs(notifPrefs);
+  //     Alert.alert('Error', 'Failed to save notification settings');
+  //   } finally {
+  //     setSavingNotifs(false);
+  //   }
+  // };
 
   const loadUserEquipment = async () => {
     try {
@@ -188,6 +236,77 @@ export default function SettingsScreen() {
           />
         </View>
       </View>
+
+      {/* TODO: Re-enable push notifications after App Store Connect setup */}
+      {/* <View style={[styles.section, { borderBottomColor: colors.border }]}>
+        <Text style={[styles.sectionTitle, { color: colors.text }]}>Notifications</Text>
+        {loadingNotifs ? (
+          <ActivityIndicator color={colors.primary} style={{ marginVertical: 20 }} />
+        ) : notifPrefs ? (
+          <>
+            <View style={[styles.card, { borderBottomColor: colors.surfaceAlt }]}>
+              <View>
+                <Text style={[styles.label, { color: colors.textSecondary }]}>Enable Notifications</Text>
+                <Text style={[styles.hint, { color: colors.textMuted }]}>Receive workout reminders</Text>
+              </View>
+              <Switch
+                value={notifPrefs.enabled}
+                onValueChange={(v) => handleNotifPrefChange('enabled', v)}
+                trackColor={{ false: colors.border, true: colors.primary }}
+                thumbColor={colors.card}
+                disabled={savingNotifs}
+              />
+            </View>
+            {notifPrefs.enabled && (
+              <>
+                <View style={[styles.card, { borderBottomColor: colors.surfaceAlt }]}>
+                  <View>
+                    <Text style={[styles.label, { color: colors.textSecondary }]}>Workout Reminder</Text>
+                    <Text style={[styles.hint, { color: colors.textMuted }]}>Daily at {notifPrefs.workoutReminderTime}</Text>
+                  </View>
+                  <Switch
+                    value={notifPrefs.workoutReminder}
+                    onValueChange={(v) => handleNotifPrefChange('workoutReminder', v)}
+                    trackColor={{ false: colors.border, true: colors.primary }}
+                    thumbColor={colors.card}
+                    disabled={savingNotifs}
+                  />
+                </View>
+                <View style={[styles.card, { borderBottomColor: colors.surfaceAlt }]}>
+                  <View>
+                    <Text style={[styles.label, { color: colors.textSecondary }]}>Streak Reminder</Text>
+                    <Text style={[styles.hint, { color: colors.textMuted }]}>Evening reminder at {notifPrefs.streakReminderTime}</Text>
+                  </View>
+                  <Switch
+                    value={notifPrefs.streakReminder}
+                    onValueChange={(v) => handleNotifPrefChange('streakReminder', v)}
+                    trackColor={{ false: colors.border, true: colors.primary }}
+                    thumbColor={colors.card}
+                    disabled={savingNotifs}
+                  />
+                </View>
+                <View style={[styles.card, { borderBottomColor: colors.surfaceAlt }]}>
+                  <View>
+                    <Text style={[styles.label, { color: colors.textSecondary }]}>Quest Updates</Text>
+                    <Text style={[styles.hint, { color: colors.textMuted }]}>When quests are completed</Text>
+                  </View>
+                  <Switch
+                    value={notifPrefs.questReminder}
+                    onValueChange={(v) => handleNotifPrefChange('questReminder', v)}
+                    trackColor={{ false: colors.border, true: colors.primary }}
+                    thumbColor={colors.card}
+                    disabled={savingNotifs}
+                  />
+                </View>
+              </>
+            )}
+          </>
+        ) : (
+          <Text style={[styles.hint, { color: colors.textMuted, textAlign: 'center', marginVertical: 20 }]}>
+            Unable to load notification settings
+          </Text>
+        )}
+      </View> */}
 
       {unitSwitchingFeature.isAvailable && (
         <View style={[styles.section, { borderBottomColor: colors.border }]}>
